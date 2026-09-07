@@ -97,8 +97,8 @@ export function speechDraft(base, transcript, final, sendPhrase = "over, オー�
 export function convertSpokenSymbol(text, commands = true) {
   text = text.replace(/。+(?=、)/g, "");
   const symbols = [
-    ["クエスチョンマーク|はてな|\\bquestion mark", "?"],
-    ["エクスクラメーションマーク|びっくりマーク|\\bexclamation mark", "!"],
+    ["クエスチョン(?:マーク)?|はてな|\\bquestion(?:\\s+mark)?", "?"],
+    ["エクスクラメーション(?:マーク)?|びっくりマーク|\\bexclamation(?:\\s+mark)?", "!"],
     ["カンマ|コンマ|\\bcomma", ","],
     ["ピリオド|\\bperiod|\\bfull stop", "."],
     ["読点|とうてん|(?<![\\p{L}\\p{N}_])(?:てん|点)", "、"],

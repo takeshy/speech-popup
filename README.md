@@ -198,8 +198,8 @@ Set **Pause between utterances (seconds)** to at least 1 (0 disables this featur
 | まる / 丸 / 句点 | 。 |
 | comma / カンマ / コンマ | , |
 | period / full stop / ピリオド | . |
-| question mark / クエスチョンマーク / はてな | ? |
-| exclamation mark / びっくりマーク | ! |
+| question / question mark / クエスチョンマーク / クエスチョン / はてな | ? |
+| exclamation / exclamation mark / エクスクラメーション / エクスクラメーションマーク / びっくりマーク | ! |
 | new line / newline / Enter / 改行 / エンター | Line break |
 
 Only the trailing name is converted, not commands in the middle of a sentence. Short Japanese names (てん / まる / 点 / 丸) must be recognized as separate words, preceded by whitespace/punctuation or at the start of a segment, to avoid changing words such as 始まる. A spoken line break inserts a newline in the editor; it does not copy or submit. The existing send phrase takes precedence. Recognition accuracy depends on the selected service.

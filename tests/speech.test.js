@@ -240,14 +240,23 @@ test("transcribeSpeech rejects a truncated Gemini candidate", async () => {
 });
 
 test("spoken punctuation and Enter convert only after final silence", () => {
-  for (const [name, symbol] of [["てん", "、"], ["まる", "。"], ["カンマ", ","], ["コンマ", ","], ["ピリオド", "."], ["はてな", "?"], ["クエスチョンマーク", "?"], ["びっくりマーク", "!"], ["改行", "\n"], ["エンター", "\n"], ["Enter", "\n"], ["new line", "\n"], ["comma", ","], ["period", "."], ["question mark", "?"], ["句点", "。"], ["読点", "、"]]) {
+  for (const [name, symbol] of [["てん", "、"], ["まる", "。"], ["カンマ", ","], ["コンマ", ","], ["ピリオド", "."], ["はてな", "?"], ["クエスチョンマーク", "?"], ["クエスチョン", "?"], ["びっくりマーク", "!"], ["エクスクラメーション", "!"], ["エクスクラメーションマーク", "!"], ["exclamation", "!"], ["Exclamation", "!"], ["exclamation mark", "!"], ["改行", "\n"], ["エンター", "\n"], ["Enter", "\n"], ["new line", "\n"], ["comma", ","], ["period", "."], ["question mark", "?"], ["question", "?"], ["Question", "?"], ["句点", "。"], ["読点", "、"]]) {
     assert.equal(speechDraft("", `hello ${name}。`, true, "", true).text, `hello${symbol}`);
     assert.equal(speechDraft("hello", name, true, "", true).text, `hello${symbol}`);
     assert.equal(speechDraft("", name, false, "", true).text, name);
     assert.equal(speechDraft("", name, true, "", false).text, name);
   }
+  assert.equal(speechDraft("", "いいですかクエスチョン。", true, "", true).text, "いいですか?");
+  assert.equal(speechDraft("", "クエスチョンについて話す", true, "", true).text, "クエスチョンについて話す");
   assert.equal(speechDraft("", "カンマについて話す", true, "", true).text, "カンマについて話す");
   assert.equal(speechDraft("", "会議が始まる", true, "", true).text, "会議が始まる");
+  assert.equal(speechDraft("", "すごいエクスクラメーション。", true, "", true).text, "すごい!");
+  assert.equal(speechDraft("", "エクスクラメーションについて話す", true, "", true).text, "エクスクラメーションについて話す");
+  assert.equal(speechDraft("", "exclamation is a word", true, "", true).text, "exclamation is a word");
+  assert.equal(speechDraft("", "exclamations", true, "", true).text, "exclamations");
+  assert.equal(speechDraft("", "subexclamation", true, "", true).text, "subexclamation");
+  assert.equal(speechDraft("", "subquestion", true, "", true).text, "subquestion");
+  assert.equal(speechDraft("", "questions", true, "", true).text, "questions");
   assert.equal(speechDraft("", "disenter", true, "", true).text, "disenter");
   assert.equal(speechDraft("hello\n", "world", true, "", true).text, "hello\nworld");
   assert.equal(speechDraft("hello\n", "改行", true, "", true).text, "hello\n\n");
