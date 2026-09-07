@@ -1,7 +1,7 @@
-// Automatic stop on silence, ported from gemihub-desktop's src/llm/speechSilence.ts.
+// Speech boundaries detected from silence, ported from gemihub-desktop's src/llm/speechSilence.ts.
 
 // Require a short run of audible input before arming the silence timeout, so
-// the recorder never stops before the user has said anything.
+// a boundary is never reported before the user has said anything.
 export function createSilenceDetector(seconds) {
   let voiceStarted = null;
   let lastVoice = 0;
@@ -26,8 +26,8 @@ export function createSilenceDetector(seconds) {
 
 // watchSpeechSilence calls onSilence once the stream has been quiet for
 // `seconds`. onStatus(false) means the AudioContext never started, so the
-// caller must tell the user that auto-stop is unavailable.
-export function watchSpeechSilence(stream, seconds, onSilence, onStatus) {
+// caller must tell the user that silence detection is unavailable.
+export function watchSpeechSilence(stream, seconds, onSilence, onStatus, onVoice = () => {}) {
   let context;
   let timer;
   let disposed = false;
@@ -62,6 +62,7 @@ export function watchSpeechSilence(stream, seconds, onSilence, onStatus) {
         const rms = Math.sqrt(
           samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length
         );
+        if (rms >= 0.015) onVoice();
         if (detect(rms, performance.now())) {
           cleanup();
           onSilence();

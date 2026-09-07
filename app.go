@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/takeshy/speech-popup/internal/i18n"
 	"log"
 	"runtime"
 	"strings"
@@ -51,6 +52,7 @@ type App struct {
 	pendingShow    bool
 	pasteAfterHide bool
 	overlayOpen    bool
+	contentHeight  int
 	ipcServer      *ipc.Server
 }
 
@@ -158,12 +160,12 @@ func (a *App) startHotkey(cfg config.HotkeyConfig) {
 // overwhelmingly common cause is another application holding the combination.
 func describeHotkeyError(accelerator string, err error) string {
 	if errors.Is(err, hotkey.ErrUnsupported) {
-		return "アプリ内ホットキーは Windows 専用です。この OS ではコンポジタ/OS 側で `speech-popup show` に割り当ててください。"
+		return i18n.T("アプリ内ホットキーは Windows 専用です。この OS ではコンポジタ/OS 側で `speech-popup show` に割り当ててください。")
 	}
 	if runtime.GOOS == "windows" && strings.Contains(err.Error(), "1409") {
-		return accelerator + " は他のアプリが既に登録しているため使えません。設定で別のキーにしてください。"
+		return fmt.Sprintf(i18n.T("%s は他のアプリが既に登録しているため使えません。設定で別のキーにしてください。"), accelerator)
 	}
-	return "ホットキー " + accelerator + " を登録できません: " + err.Error()
+	return fmt.Sprintf(i18n.T("ホットキー %s を登録できません: %v"), accelerator, err)
 }
 
 func (a *App) openFileDialog(title string, filters []application.FileFilter) (string, error) {

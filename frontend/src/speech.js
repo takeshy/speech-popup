@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 // Speech-to-text core, ported from gemihub-desktop's src/llm/speechTranscription.ts.
 // Everything here is pure or takes its HTTP transport as an argument, so the
 // whole module is testable under plain node (see ../../tests/speech.test.js).
@@ -49,7 +50,7 @@ export function transcriptionURL(baseUrl, endpointType = "openai", vertexProject
   if (endpointType === "vertex-transcribe") {
     const project = vertexProjectId.trim();
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(project)) {
-      throw new Error("Vertex AI の Google Cloud プロジェクト ID を設定してください。");
+      throw new Error(t("Vertex AI の Google Cloud プロジェクト ID を設定してください。"));
     }
     return `https://aiplatform.googleapis.com/v1beta1/projects/${project}/locations/global/publishers/google/models/gemini-3.5-transcribe-preview:generateContent`;
   }
@@ -61,7 +62,7 @@ export function transcriptionURL(baseUrl, endpointType = "openai", vertexProject
     !["http:", "https:"].includes(url.protocol) || url.username ||
     url.password || url.search || url.hash
   ) {
-    throw new Error("Base URL には認証情報・クエリ・フラグメントを含まない HTTP(S) URL を指定してください。");
+    throw new Error(t("Base URL には認証情報・クエリ・フラグメントを含まない HTTP(S) URL を指定してください。"));
   }
   url.pathname = url.pathname.replace(/\/+$/, "") +
     (endpointType === "whisper-cpp" ? "/inference" : "/audio/transcriptions");
@@ -70,7 +71,7 @@ export function transcriptionURL(baseUrl, endpointType = "openai", vertexProject
 
 // speechDraft appends the transcript to whatever is already in the box and
 // reports whether the user spoke a send phrase ("over"), which copies & closes.
-export function speechDraft(base, transcript, final, sendPhrase = "over, オーバー") {
+export function speechDraft(base, transcript, final, sendPhrase = "over, オーバー", afterSilence = false, normalized = false) {
   const phrases = sendPhrase.split(/[,、\n]/).map((phrase) => phrase.trim())
     .filter(Boolean).sort((a, b) => b.length - a.length);
   const pattern = phrases.map((phrase) => {
@@ -79,11 +80,38 @@ export function speechDraft(base, transcript, final, sendPhrase = "over, オー�
   }).join("|");
   const command = pattern ? new RegExp(`(?:${pattern})[\\s。．.!！?？、,]*$`, "i") : null;
   const send = final && !!command && command.test(transcript);
-  const spoken = send && command ? transcript.replace(command, "").trimEnd() : transcript;
+  let spoken = send && command ? transcript.replace(command, "").trimEnd() : transcript;
+  if (final && !normalized) spoken = convertSpokenSymbol(spoken, afterSilence && !send);
+  if (final) spoken = spoken.replace(/。+(?=、)/g, "");
+  // A new comma replaces the previous Japanese full stop, including when
+  // dictated in a separate recording. Do not rewrite other existing text.
+  if (/^、/.test(spoken)) base = base.replace(/。+[ \t　]*$/, "");
   return {
-    text: base + (base && spoken && !/\s$/.test(base) ? " " : "") + spoken,
+    text: base + (base && spoken && !/\s$/.test(base) && !/^[\s,.?!、。？！]/.test(spoken) ? " " : "") + spoken,
     send
   };
+}
+
+// Only the trailing command is eligible; punctuation added by STT is ignored.
+// English names need a word boundary (e.g. "weekend" must not match "end").
+export function convertSpokenSymbol(text, commands = true) {
+  text = text.replace(/。+(?=、)/g, "");
+  const symbols = [
+    ["クエスチョンマーク|はてな|\\bquestion mark", "?"],
+    ["エクスクラメーションマーク|びっくりマーク|\\bexclamation mark", "!"],
+    ["カンマ|コンマ|\\bcomma", ","],
+    ["ピリオド|\\bperiod|\\bfull stop", "."],
+    ["読点|とうてん|(?<![\\p{L}\\p{N}_])(?:てん|点)", "、"],
+    ["句点|くてん|(?<![\\p{L}\\p{N}_])(?:まる|丸)", "。"],
+    ["改行|かいぎょう|エンター|\\benter|\\bnew line|\\bnewline", "\n"]
+  ];
+  for (const [names, symbol] of commands ? symbols : []) {
+    const match = new RegExp(`(?:${names})[\\s。．.!！?？、,]*$`, "iu").exec(text);
+    if (match) return text.slice(0, match.index).replace(/[。 \t　]+$/, "") + symbol;
+  }
+  // Suppress STT's automatic trailing Japanese full stop, but preserve
+  // internal sentence boundaries and explicit symbols returned above.
+  return text.replace(/。+(?=\s*$)/, "");
 }
 
 // 16 kHz mono PCM WAV also works with servers that cannot decode WebM/Opus.
@@ -119,7 +147,7 @@ export async function recordingToWav(blob) {
   const decoder = new OfflineAudioContext(1, 1, SAMPLE_RATE);
   const decoded = await decoder.decodeAudioData(await blob.arrayBuffer());
   if (!decoded.length || decoded.duration > MAX_SECONDS + 1) {
-    throw new Error("録音は5分以内にしてください。");
+    throw new Error(t("録音は5分以内にしてください。"));
   }
   const renderer = new OfflineAudioContext(1, Math.ceil(decoded.duration * SAMPLE_RATE), SAMPLE_RATE);
   const source = renderer.createBufferSource();
@@ -134,9 +162,9 @@ export async function recordingToWav(blob) {
 export async function combineSpeechWavs(wavs) {
   const buffers = await Promise.all(wavs.map((wav) => wav.arrayBuffer()));
   const size = buffers.reduce((total, buffer) => total + buffer.byteLength - WAV_HEADER_BYTES, 0);
-  if (!buffers.length || size <= 0) throw new Error("録音が空です。");
+  if (!buffers.length || size <= 0) throw new Error(t("録音が空です。"));
   if (size > SAMPLE_RATE * 2 * (MAX_SECONDS + 1)) {
-    throw new Error("保持分を含めた録音は5分以内にしてください。");
+    throw new Error(t("保持分を含めた録音は5分以内にしてください。"));
   }
   const result = new Uint8Array(WAV_HEADER_BYTES + size);
   result.set(new Uint8Array(buffers[0], 0, WAV_HEADER_BYTES));
@@ -168,14 +196,14 @@ export function validateSpeechSettings(settings) {
   const url = transcriptionURL(settings.baseUrl, settings.endpointType, settings.vertexProjectId ?? "");
   if (isGoogleEndpoint(settings.endpointType)) {
     if (settings.endpointType === "gemini-transcribe" && !settings.apiKey.trim()) {
-      throw new Error("Gemini API の API Key を設定してください。");
+      throw new Error(t("Gemini API の API Key を設定してください。"));
     }
     const language = settings.language.trim();
     if (language && language.toLowerCase() !== "auto" && !/^[a-z]{2,3}(?:-[a-z0-9]+)*$/i.test(language)) {
-      throw new Error("言語は auto か BCP-47 (ja / en-US など) で指定してください。");
+      throw new Error(t("言語は auto か BCP-47 (ja / en-US など) で指定してください。"));
     }
   } else if (settings.endpointType !== "whisper-cpp" && !settings.model.trim()) {
-    throw new Error("STT の Model を設定してください。");
+    throw new Error(t("STT の Model を設定してください。"));
   }
   return url;
 }
@@ -189,17 +217,17 @@ function bytesToBase64(bytes) {
 }
 
 function geminiTranscript(result) {
-  const invalid = () => new Error("STT の応答を解釈できません。");
+  const invalid = () => new Error(t("STT の応答を解釈できません。"));
   if (!result || typeof result !== "object" || Array.isArray(result) || "error" in result) throw invalid();
   if (result.promptFeedback && typeof result.promptFeedback === "object" && "blockReason" in result.promptFeedback) {
-    throw new Error("音声がモデルにブロックされました。");
+    throw new Error(t("音声がモデルにブロックされました。"));
   }
   if (!Array.isArray(result.candidates) || !result.candidates.length) throw invalid();
   const candidate = result.candidates[0];
   if (!candidate || typeof candidate !== "object") throw invalid();
   // Never insert a partial transcript (including a partial send command).
   if (candidate.finishReason && candidate.finishReason !== "STOP") {
-    throw new Error("認識結果が途中で打ち切られました。もう一度お試しください。");
+    throw new Error(t("認識結果が途中で打ち切られました。もう一度お試しください。"));
   }
   const parts = candidate.content?.parts;
   if (parts === undefined && candidate.finishReason === "STOP") return "";
@@ -219,13 +247,13 @@ export async function transcribeSpeech(audio, settings, transport, signal) {
   const url = validateSpeechSettings(settings);
   const google = isGoogleEndpoint(settings.endpointType);
   const native = settings.endpointType === "whisper-cpp";
-  if (!audio.size) throw new Error("録音が空です。");
+  if (!audio.size) throw new Error(t("録音が空です。"));
   let headers;
   let bodyBase64;
   if (google) {
-    if (audio.size <= WAV_HEADER_BYTES) throw new Error("録音が空です。");
+    if (audio.size <= WAV_HEADER_BYTES) throw new Error(t("録音が空です。"));
     if (audio.size > WAV_HEADER_BYTES + (MAX_SECONDS + 1) * SAMPLE_RATE * 2) {
-      throw new Error("録音は5分以内にしてください。");
+      throw new Error(t("録音は5分以内にしてください。"));
     }
     const language = settings.language.trim();
     const languageCodes = !language || language.toLowerCase() === "auto"
@@ -272,19 +300,19 @@ export async function transcribeSpeech(audio, settings, transport, signal) {
   // recorded text itself.
   if (response.status < 200 || response.status >= 300) {
     const reason = response.status === 401 || response.status === 403
-      ? "API Key とサーバーの認証設定を確認してください。"
-      : "Base URL・Model・サーバーの対応形式を確認してください。";
+      ? t("API Key とサーバーの認証設定を確認してください。")
+      : t("Base URL・Model・サーバーの対応形式を確認してください。");
     throw new Error(`STT HTTP ${response.status}: ${reason}`);
   }
   let result;
   try {
     result = JSON.parse(response.body);
   } catch {
-    throw new Error("STT の応答が JSON ではありません。");
+    throw new Error(t("STT の応答が JSON ではありません。"));
   }
   if (google) return geminiTranscript(result);
   if (!result || typeof result !== "object" || typeof result.text !== "string") {
-    throw new Error("STT の応答に text フィールドがありません。");
+    throw new Error(t("STT の応答に text フィールドがありません。"));
   }
   const text = result.text.trim();
   return /^\[BLANK_AUDIO\]$/i.test(text) ? "" : text;

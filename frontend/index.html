@@ -40,8 +40,8 @@
     <div class="actions">
       <button id="retry" type="button" hidden title="保持している録音をもう一度認識する (Ctrl+R)">再認識</button>
       <button id="record" class="primary" type="button">● 録音</button>
-      <button id="copy" type="button">Copy</button>
-      <button id="close" type="button">Close</button>
+      <button id="copy" type="button">コピー</button>
+      <button id="close" type="button">閉じる</button>
     </div>
   </div>
   <div id="help-overlay" class="overlay" data-open="false" tabindex="-1">
@@ -96,17 +96,19 @@
         <div class="field-row" id="row-vertex">
           <label class="wide">Google Cloud プロジェクト ID <input id="cfg-speech-vertex-project" type="text" placeholder="my-project" spellcheck="false"></label>
           <span id="vertex-status" class="settings-note"></span>
-          <button id="vertex-connect" type="button">Google に接続</button>
+          <p class="settings-note">Google Cloud のデスクトップアプリ用 OAuth クライアント JSON を選び、ブラウザで認可してください。サービスアカウントの JSON ではありません。接続後に設定を保存してください。</p>
+          <button id="vertex-connect" type="button">JSON を選択して Google に接続</button>
           <button id="vertex-disconnect" type="button">接続を解除</button>
         </div>
         <div class="field-row">
           <label>言語 <input id="cfg-speech-language" type="text" placeholder="auto" spellcheck="false"></label>
-          <label>無音で自動停止 (秒) <input id="cfg-speech-silence" type="number" min="0" max="10" step="1"></label>
+          <label>発話を区切る無音 (秒) <input id="cfg-speech-silence" type="number" min="0" max="10" step="1"></label>
           <label class="check"><input id="cfg-speech-auto-start" type="checkbox"> ポップアップを開いたら自動で録音を開始する</label>
         </div>
         <div class="field-row">
           <label class="wide">コピーして閉じる合図の言葉 (カンマ区切り) <input id="cfg-speech-send-phrase" type="text" placeholder="over, オーバー" spellcheck="false"></label>
         </div>
+        <p class="settings-note">無音後の発話末尾で、てん → 、 / まる → 。 / はてな → ? / 改行・エンター → 改行。0 秒では無効です。</p>
         <p class="settings-note">API Key は config.toml に平文で保存されます (ファイルは 0600 で書き込まれます)。</p>
         <h3>ウィンドウ</h3>
         <div class="field-row">

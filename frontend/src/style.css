@@ -14,7 +14,7 @@ html {
   height: 100%;
 }
 
-/* The window is a fixed size, so the popup is laid out as a column that fills
+/* The popup is laid out as a column that fills the current window size:
    it exactly: the text area absorbs the slack and everything else keeps its
    natural height. Without this a wrapped error message pushes the footer
    buttons out of the window and the whole body scrolls. */
@@ -142,6 +142,7 @@ textarea {
   width: 100%;
   min-height: 0;
   resize: none;
+  overflow-y: auto;
   border: 1px solid #c6d0dd;
   border-radius: 6px;
   padding: 9px 10px;

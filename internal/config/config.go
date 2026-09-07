@@ -54,7 +54,7 @@ type SpeechConfig struct {
 	APIKey          string
 	Model           string
 	Language        string // BCP-47 tag, or "auto"
-	SilenceSeconds  int    // 0 disables the automatic stop
+	SilenceSeconds  int    // 0 disables silence segmentation
 	SendPhrase      string // spoken words that copy & close, comma separated
 	VertexProjectID string
 	// AutoStart begins recording as soon as the popup is shown.
@@ -365,7 +365,7 @@ func Marshal(c *Config) string {
 	fmt.Fprintf(&b, "model = %s\n", quote(c.Speech.Model))
 	b.WriteString("# BCP-47 (ja / en / ja-JP ...) もしくは \"auto\"\n")
 	fmt.Fprintf(&b, "language = %s\n", quote(c.Speech.Language))
-	b.WriteString("# 無音がこの秒数続いたら録音を自動停止する (0 で無効)\n")
+	b.WriteString("# 無音がこの秒数続いたら発話を区切って変換する。録音は継続 (0 で無効)\n")
 	fmt.Fprintf(&b, "silence_seconds = %d\n", c.Speech.SilenceSeconds)
 	b.WriteString("# 認識結果の末尾がこの語なら、その語を除いてコピーして閉じる (カンマ区切り)\n")
 	fmt.Fprintf(&b, "send_phrase = %s\n", quote(c.Speech.SendPhrase))

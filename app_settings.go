@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/takeshy/speech-popup/internal/i18n"
 	"runtime"
 
 	"github.com/takeshy/speech-popup/internal/clipboard"
@@ -77,7 +78,7 @@ func (a *App) SaveConfig(view config.View) (SaveConfigResult, error) {
 	}
 	path := config.Path()
 	if err := config.Save(path, next); err != nil {
-		return SaveConfigResult{}, fmt.Errorf("設定ファイルを書き込めません: %w", err)
+		return SaveConfigResult{}, fmt.Errorf(i18n.T("設定ファイルを書き込めません: %w"), err)
 	}
 
 	a.actionMu.Lock()
@@ -87,6 +88,9 @@ func (a *App) SaveConfig(view config.View) (SaveConfigResult, error) {
 	a.mu.Lock()
 	prev := *a.cfg
 	*a.cfg = *next
+	if prev.Window != next.Window {
+		a.contentHeight = 0
+	}
 	overlay := a.overlayOpen
 	a.mu.Unlock()
 
@@ -112,7 +116,7 @@ func (a *App) SetOverlayOpen(open bool) {
 	defer a.actionMu.Unlock()
 	a.mu.Lock()
 	a.overlayOpen = open
-	width, height := a.cfg.Window.Width, a.cfg.Window.Height
+	width, height := a.cfg.Window.Width, max(a.cfg.Window.Height, a.contentHeight)
 	a.mu.Unlock()
 	if a.window == nil {
 		return
@@ -120,6 +124,37 @@ func (a *App) SetOverlayOpen(open bool) {
 	if open {
 		a.window.SetSize(max(width, overlayMinWidth), max(height, overlayMinHeight))
 	} else {
+		a.window.SetSize(width, height)
+	}
+}
+
+// ResizePopup fits the editor without persisting temporary content dimensions.
+func (a *App) ResizePopup(requestedHeight int) {
+	a.actionMu.Lock()
+	defer a.actionMu.Unlock()
+	a.mu.Lock()
+	if a.overlayOpen || a.window == nil {
+		a.mu.Unlock()
+		return
+	}
+	minimum := a.cfg.Window.Height
+	width := a.cfg.Window.Width
+	a.mu.Unlock()
+	height := min(max(requestedHeight, minimum), max(minimum, 600))
+	if screen, err := a.window.GetScreen(); err == nil && screen != nil && screen.WorkArea.Height > 0 {
+		area := screen.WorkArea
+		height = min(height, max(120, area.Height-24))
+		x, y := a.window.Position()
+		newY := max(area.Y, min(y, area.Y+area.Height-height))
+		if y != newY {
+			a.window.SetPosition(x, newY)
+		}
+	}
+	a.mu.Lock()
+	a.contentHeight = height
+	a.mu.Unlock()
+	currentWidth, currentHeight := a.window.Size()
+	if currentWidth != width || currentHeight != height {
 		a.window.SetSize(width, height)
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/takeshy/speech-popup/internal/i18n"
 	"regexp"
 	"strings"
 )
@@ -27,10 +28,10 @@ func vertexSpeechHTTPRequest(request ExternalHTTPRequest, accessToken func() (st
 	token, err := accessToken()
 	if err != nil {
 		// OAuth errors can quote remote responses; do not surface those.
-		return nil, fmt.Errorf("Vertex AI の認証を取得できません。設定で Google に接続し直してください。")
+		return nil, fmt.Errorf("%s", i18n.T("Vertex AI の認証を取得できません。設定で Google に接続し直してください。"))
 	}
 	if strings.TrimSpace(token) == "" {
-		return nil, fmt.Errorf("Vertex AI を使うには Google へのログインが必要です。")
+		return nil, fmt.Errorf("%s", i18n.T("Vertex AI を使うには Google へのログインが必要です。"))
 	}
 	request.Headers = map[string]string{"Content-Type": "application/json", "Authorization": "Bearer " + token}
 	return send(request)

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/takeshy/speech-popup/internal/i18n"
 	"io"
 	"net"
 	"net/http"
@@ -56,7 +57,7 @@ type googleTokenResponse struct {
 var vertexOAuthHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 func (a *App) SelectVertexOAuthClient() (*VertexOAuthClient, error) {
-	path, err := a.openFileDialog("Select Google OAuth desktop client JSON", []application.FileFilter{{DisplayName: "OAuth client JSON", Pattern: "*.json"}})
+	path, err := a.openFileDialog(i18n.T("Google OAuth デスクトップクライアント JSON を選択"), []application.FileFilter{{DisplayName: i18n.T("OAuth クライアント JSON"), Pattern: "*.json"}})
 	if err != nil || path == "" {
 		return nil, err
 	}
@@ -64,6 +65,10 @@ func (a *App) SelectVertexOAuthClient() (*VertexOAuthClient, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseVertexOAuthClient(data)
+}
+
+func parseVertexOAuthClient(data []byte) (*VertexOAuthClient, error) {
 	var document struct {
 		Installed *struct {
 			ClientID     string `json:"client_id"`
@@ -74,8 +79,8 @@ func (a *App) SelectVertexOAuthClient() (*VertexOAuthClient, error) {
 	if err := json.Unmarshal(data, &document); err != nil {
 		return nil, err
 	}
-	if document.Installed == nil || document.Installed.ClientID == "" {
-		return nil, fmt.Errorf("the JSON must contain an OAuth client of type Desktop app")
+	if document.Installed == nil || strings.TrimSpace(document.Installed.ClientID) == "" {
+		return nil, fmt.Errorf("%s", i18n.T("デスクトップアプリ用の OAuth クライアント JSON を指定してください"))
 	}
 	return &VertexOAuthClient{ClientID: document.Installed.ClientID, ClientSecret: document.Installed.ClientSecret, ProjectID: document.Installed.ProjectID}, nil
 }
@@ -83,7 +88,7 @@ func (a *App) SelectVertexOAuthClient() (*VertexOAuthClient, error) {
 func (a *App) ConnectVertexOAuth(clientID, clientSecret string) (*VertexOAuthStatus, error) {
 	clientID = strings.TrimSpace(clientID)
 	if clientID == "" {
-		return nil, fmt.Errorf("OAuth client ID is required")
+		return nil, fmt.Errorf("%s", i18n.T("OAuth クライアント ID を指定してください"))
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -128,21 +133,21 @@ func (a *App) ConnectVertexOAuth(clientID, clientSecret string) (*VertexOAuthSta
 	case result = <-callback:
 	case <-time.After(3 * time.Minute):
 		_ = server.Shutdown(context.Background())
-		return nil, fmt.Errorf("Google authorization timed out")
+		return nil, fmt.Errorf("%s", i18n.T("Google の認可がタイムアウトしました"))
 	}
 	_ = server.Shutdown(context.Background())
 	if result.err != "" {
-		return nil, fmt.Errorf("Google authorization failed: %s", result.err)
+		return nil, fmt.Errorf(i18n.T("Google の認可に失敗しました: %s"), result.err)
 	}
 	if result.code == "" {
-		return nil, fmt.Errorf("Google authorization returned no code")
+		return nil, fmt.Errorf("%s", i18n.T("Google から認可コードが返されませんでした"))
 	}
 	token, err := exchangeGoogleToken(url.Values{"client_id": {clientID}, "client_secret": {clientSecret}, "code": {result.code}, "code_verifier": {verifier}, "redirect_uri": {redirectURI}, "grant_type": {"authorization_code"}})
 	if err != nil {
 		return nil, err
 	}
 	if token.RefreshToken == "" {
-		return nil, fmt.Errorf("Google did not return a refresh token; revoke the existing grant and connect again")
+		return nil, fmt.Errorf("%s", i18n.T("Google からリフレッシュトークンが返されませんでした。既存の認可を取り消して接続し直してください"))
 	}
 	credentials := &vertexOAuthCredentials{ClientID: clientID, ClientSecret: clientSecret, RefreshToken: token.RefreshToken, AccessToken: token.AccessToken, Expiry: time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)}
 	if err := saveVertexOAuthCredentials(credentials); err != nil {
@@ -183,7 +188,7 @@ func (a *App) vertexOAuthAccessToken() (string, error) {
 	credentials, err := loadVertexOAuthCredentials()
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("connect a Google account in the Vertex AI settings")
+			return "", fmt.Errorf("%s", i18n.T("Vertex AI の設定で Google に接続してください"))
 		}
 		return "", err
 	}
@@ -224,7 +229,7 @@ func exchangeGoogleToken(values url.Values) (*googleTokenResponse, error) {
 		if message == "" {
 			message = token.Error
 		}
-		return nil, fmt.Errorf("Google token exchange failed (%d): %s", response.StatusCode, message)
+		return nil, fmt.Errorf(i18n.T("Google のトークン交換に失敗しました (%d): %s"), response.StatusCode, message)
 	}
 	return &token, nil
 }

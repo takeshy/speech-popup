@@ -1,3 +1,4 @@
+import { t, getLanguage, localizeDOM } from "./i18n.js";
 // speech-popup UI: a resident popup that records speech, transcribes it, and
 // puts the result on the clipboard for the window that had focus before.
 
@@ -5,6 +6,7 @@ import { createRecorder, speechSupported } from "./recorder.js";
 import { browserSpeechSupported, createBrowserRecognizer } from "./browser_speech.js";
 import { createAudioMeter } from "./meter.js";
 import { createTextEditor } from "./editor.js";
+import { createAutoSizer } from "./autosize.js";
 import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./speech.js";
 
 (() => {
@@ -75,35 +77,36 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   };
 
   const HELP_TEXT = [
-    "── 録音 ──",
-    "Ctrl+Space / ● 録音   録音の開始・停止 (停止すると認識が走る)",
-    "無音が設定秒数続くと自動で停止 (設定 > 無音で自動停止)",
-    "録音は最長 5 分。20MB を超えると停止します",
-    "Ctrl+R / 再認識       保持している録音をもう一度サーバーへ送る",
-    "Ctrl+D                保持している録音を破棄する",
-    "合図の言葉 (既定 over / オーバー) を最後に話すと、その語を除いてコピーして閉じる",
+    t("── 録音 ──"),
+    t("Ctrl+Space / ● 録音   録音の開始・停止 (停止すると認識が走る)"),
+    t("無音で発話を区切って変換 (録音は継続。Ctrl+Space で停止)"),
+    t("録音は最長 5 分。20MB を超えると停止します"),
+    t("Ctrl+R / 再認識       保持している録音をもう一度サーバーへ送る"),
+    t("Ctrl+D                保持している録音を破棄する"),
+    t("合図の言葉 (既定 over / オーバー) を最後に話すと、その語を除いてコピーして閉じる"),
     "",
-    "── 編集 ──",
-    "認識結果はそのまま編集できます (通常のテキストエリア)",
-    "Enter                 コピーして閉じる",
-    "Shift+Enter           改行",
-    "Ctrl+A / Ctrl+E       行頭 / 行末",
-    "Ctrl+B / Ctrl+F       1文字左 / 右",
-    "Ctrl+K / Ctrl+U       行末まで削除 / 行頭まで削除",
-    "Ctrl+O                全選択",
-    "Ctrl+C / X / V        コピー / 切り取り / 貼り付け",
-    "Ctrl+Z                元に戻す (Ctrl+Shift+Z / Ctrl+Y でやり直す)",
-    "Ctrl+↑ / Ctrl+↓       コピー履歴を移動 (最大 30 件。Ctrl+↓ で下書きに戻る)",
+    t("── 編集 ──"),
+    t("認識結果はそのまま編集できます (通常のテキストエリア)"),
+    t("Enter                 コピーして閉じる"),
+    t("Shift+Enter           改行"),
+    t("音声コマンド: てん → 、 / まる → 。 / はてな → ? / 改行・エンター → 改行 (無音設定が必要)"),
+    t("Ctrl+A / Ctrl+E       行頭 / 行末"),
+    t("Ctrl+B / Ctrl+F       1文字左 / 右"),
+    t("Ctrl+K / Ctrl+U       行末まで削除 / 行頭まで削除"),
+    t("Ctrl+O                全選択"),
+    t("Ctrl+C / X / V        コピー / 切り取り / 貼り付け"),
+    t("Ctrl+Z                元に戻す (Ctrl+Shift+Z / Ctrl+Y でやり直す)"),
+    t("Ctrl+↑ / Ctrl+↓       テキスト履歴を移動 (最大 30 件。Ctrl+↓ で下書きに戻る)"),
     "",
-    "── その他 ──",
-    "Escape / Ctrl+[       録音中なら中止 / それ以外は閉じる (コピーせず内容は保持)",
-    "ヘッダーをドラッグ    ウィンドウ移動",
-    "⋮                     設定 / ヘルプ",
-    "通知領域のアイコン    左クリックで表示・非表示、右クリックで 設定 / ヘルプ / 終了"
+    t("── その他 ──"),
+    t("Escape / Ctrl+[       録音中なら中止 / それ以外は閉じる (次回表示時に履歴へ保存)"),
+    t("ヘッダーをドラッグ    ウィンドウ移動"),
+    t("⋮                     設定 / ヘルプ"),
+    t("通知領域のアイコン    左クリックで表示・非表示、右クリックで 設定 / ヘルプ / 終了")
   ].join("\n");
 
   const HISTORY_LIMIT = 30;
-  const IDLE_STATUS = "Ctrl+Space: 録音 / Enter: コピーして閉じる";
+  const IDLE_STATUS = t("Ctrl+Space: 録音 / Enter: コピーして閉じる");
 
   let config = null;
   let history = [];
@@ -123,10 +126,18 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   let configurationError = false;
 
   const meter = createAudioMeter(meterEl);
+  const autoSizer = createAutoSizer(inputEl, {
+    getMinimum: () => config?.window?.height ?? 300,
+    isOverlayOpen: overlayOpen,
+    resize: (height) => appBinding()?.ResizePopup?.(height),
+    viewportHeight: () => document.documentElement.clientHeight
+  });
+  globalThis.window?.addEventListener?.("resize", autoSizer.schedule);
   const editor = createTextEditor(inputEl, () => {
     historyIndex = -1;
     stickyStatus = "";
     refreshStatus();
+    autoSizer.schedule();
   });
 
   // ---- Wails bridge -------------------------------------------------------
@@ -155,7 +166,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   // its own binding, which is the only place the stored OAuth token is used.
   async function speechTransport(request) {
     const app = appBinding();
-    if (!app) throw new Error("バックエンドに接続できません。");
+    if (!app) throw new Error(t("バックエンドに接続できません。"));
     if (new URL(request.url).hostname === "aiplatform.googleapis.com") {
       return await app.VertexSpeechHTTPRequest(request);
     }
@@ -240,15 +251,15 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     const speech = config?.speech;
     const names = {
       openai: "OpenAI",
-      custom: "OpenAI 互換",
+      custom: t("OpenAI 互換"),
       "whisper-cpp": "whisper.cpp",
       "gemini-transcribe": "Gemini",
       "vertex-transcribe": "Vertex AI"
     };
     const name = speech?.provider === "browser"
-      ? "ブラウザ"
-      : names[speech?.endpointType] ?? "未設定";
-    speechProviderEl.textContent = `書き起こし: ${name}`;
+      ? t("ブラウザ")
+      : names[speech?.endpointType] ?? t("未設定");
+    speechProviderEl.textContent = t("書き起こし: {0}", name);
   }
 
   function speechSettings() {
@@ -277,6 +288,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       getBase: () => inputEl.value,
       onInput: (text) => {
         setText(text);
+        inputEl.scrollTop = inputEl.scrollHeight;
         historyIndex = -1;
       },
       onSend: (text) => void copyAndClose(text),
@@ -288,7 +300,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
           configurationError = true;
           state = {
             ...state,
-            error: `${state.error} この WebView にはブラウザ音声認識のバックエンドが無い可能性があります。設定で OpenAI / whisper.cpp / Gemini / Vertex AI を選んでください。`
+            error: t("{0} この WebView にはブラウザ音声認識のバックエンドが無い可能性があります。設定で OpenAI / whisper.cpp / Gemini / Vertex AI を選んでください。", state.error)
           };
         }
         renderEngineState(state);
@@ -303,24 +315,24 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   }
 
   const ACTIVITY_TITLES = {
-    starting: "マイクを準備しています",
-    recording: "録音中",
-    preparing: "音声を変換しています",
-    transcribing: "認識しています"
+    starting: t("マイクを準備しています"),
+    recording: t("録音中"),
+    preparing: t("音声を変換しています"),
+    transcribing: t("認識しています")
   };
 
   function renderEngineState(state) {
     const active = state.status !== "idle";
     activityEl.dataset.active = String(active);
-    modeEl.textContent = active ? (ACTIVITY_TITLES[state.status] ?? "処理中") : "待機中";
+    modeEl.textContent = active ? (ACTIVITY_TITLES[state.status] ?? t("処理中")) : t("待機中");
     modeEl.dataset.recording = String(state.status === "recording");
     activityTitleEl.textContent = ACTIVITY_TITLES[state.status] ?? "";
     activityHintEl.textContent = state.status === "recording"
-      ? (state.silenceHint || "Ctrl+Space または ● で停止して認識")
+      ? (state.silenceHint || t("Ctrl+Space または ● で停止して認識"))
       : state.status === "starting"
-        ? "Escape で中止"
-        : "Escape で中止 (録音は保持されます)";
-    recordButton.textContent = state.status === "recording" ? "■ 停止" : active ? "■ 中止" : "● 録音";
+        ? t("Escape で中止")
+        : t("Escape で中止 (録音は保持されます)");
+    recordButton.textContent = state.status === "recording" ? t("■ 停止") : active ? t("■ 中止") : t("● 録音");
     retryButton.hidden = state.retainedCount === 0 || active;
     if (!state.error) configurationError = false;
     setError(state.error);
@@ -331,7 +343,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       meterStream = state.meterStream;
       void meter.attach(meterStream).then((available) => {
         if (!available && meterStream) {
-          activityHintEl.textContent = "レベル取得不可 (録音は継続中)";
+          activityHintEl.textContent = t("レベル取得不可 (録音は継続中)");
         }
       });
     }
@@ -363,12 +375,12 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     if (settings.provider === "browser") {
       if (!browserSpeechSupported()) {
         configurationError = true;
-        setError("この WebView はブラウザ音声認識に対応していません。設定で OpenAI / whisper.cpp / Gemini / Vertex AI のいずれかを選んでください。");
+        setError(t("この WebView はブラウザ音声認識に対応していません。設定で OpenAI / whisper.cpp / Gemini / Vertex AI のいずれかを選んでください。"));
         return;
       }
     } else {
       if (!speechSupported()) {
-        setError("このウィンドウでは録音を利用できません。");
+        setError(t("このウィンドウでは録音を利用できません。"));
         return;
       }
       const missing = missingSetting(settings);
@@ -397,19 +409,19 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   async function copyAndClose(explicitText) {
     const text = (explicitText ?? inputEl.value).trim();
     if (!text) {
-      setStatus("コピーする内容がありません。", true);
+      setStatus(t("コピーする内容がありません。"), true);
       return;
     }
     try {
       await appBinding()?.CopyToClipboard(text);
     } catch {
-      setStatus("コピーに失敗しました。", true);
+      setStatus(t("コピーに失敗しました。"), true);
       return;
     }
     addHistory(text);
     engine?.discard();
     editor.reset();
-    setStatus("コピーしました。", true);
+    setStatus(t("コピーしました。"), true);
     await hidePopupWindow();
   }
 
@@ -420,7 +432,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   }
 
   function closeWithoutCopy() {
-    // The text is deliberately kept so a mis-triggered close loses nothing.
+    // Keep the text until the next opening archives it and starts a fresh entry.
     engine?.discard();
     void hidePopupWindow();
   }
@@ -434,7 +446,10 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     stickyStatus = "";
     setError("");
     refreshStatus();
+    addHistory(inputEl.value);
+    editor.reset();
     historyIndex = -1;
+    historyDraft = "";
     void captureExternalClipboard();
     if (openRequestedOverlay(overlay)) return;
     focusInput();
@@ -471,7 +486,9 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   }
 
   function setOverlayOpen(open) {
-    void appBinding()?.SetOverlayOpen(open);
+    void Promise.resolve(appBinding()?.SetOverlayOpen(open)).then(() => {
+      if (!open) autoSizer.schedule();
+    });
   }
 
   function openHelp() {
@@ -589,15 +606,15 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     try {
       const status = await appBinding()?.GetVertexOAuthStatus();
       vertexStatusEl.textContent = status?.connected
-        ? `接続済み (${status.clientId ?? ""})`
-        : "未接続";
+        ? t("接続済み ({0})", status.clientId ?? "")
+        : t("未接続");
     } catch (caught) {
-      vertexStatusEl.textContent = `状態を取得できません: ${message(caught)}`;
+      vertexStatusEl.textContent = t("状態を取得できません: {0}", message(caught));
     }
   }
 
   async function connectVertex() {
-    setSettingsStatus("OAuth クライアント JSON を選択してください…");
+    setSettingsStatus(t("OAuth クライアント JSON を選択してください…"));
     try {
       const client = await appBinding()?.SelectVertexOAuthClient();
       if (!client?.clientId) {
@@ -607,9 +624,9 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       if (client.projectId && !cfgFields.speechVertexProject.value.trim()) {
         cfgFields.speechVertexProject.value = client.projectId;
       }
-      setSettingsStatus("ブラウザで Google の認可を完了してください…");
+      setSettingsStatus(t("ブラウザで Google の認可を完了してください…"));
       await appBinding()?.ConnectVertexOAuth(client.clientId, client.clientSecret ?? "");
-      setSettingsStatus("Google に接続しました。");
+      setSettingsStatus(t("Google に接続しました。"));
     } catch (caught) {
       setSettingsStatus(message(caught), true);
     }
@@ -634,16 +651,16 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     const os = appInfo?.os ?? "";
     const accelerator = cfgFields.hotkeyAccelerator.value.trim();
     if (os === "windows") {
-      hotkeyNoteEl.textContent = "Windows ではアプリがホットキーを登録します。";
+      hotkeyNoteEl.textContent = t("Windows ではアプリがホットキーを登録します。");
       hotkeyBindRow.hidden = true;
       return;
     }
     if (os === "darwin") {
-      hotkeyNoteEl.textContent = "macOS では OS 側のショートカット機能から `speech-popup show` を呼び出してください (Shortcuts.app など)。";
+      hotkeyNoteEl.textContent = t("macOS では OS 側のショートカット機能から `speech-popup show` を呼び出してください (Shortcuts.app など)。");
       hotkeyBindRow.hidden = true;
       return;
     }
-    hotkeyNoteEl.textContent = "Linux ではキー登録はコンポジタ側の仕事です。下の bind 行を hyprland.conf に追加してください。";
+    hotkeyNoteEl.textContent = t("Linux ではキー登録はコンポジタ側の仕事です。下の bind 行を hyprland.conf に追加してください。");
     const line = hyprlandBindLine(accelerator);
     hotkeyBindRow.hidden = !line;
     hotkeyBindLineEl.textContent = line;
@@ -665,16 +682,16 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       `config: ${appInfo.configPath}`,
       `data: ${appInfo.dataDir}`,
       `log: ${appInfo.logPath}`,
-      `ホットキー: ${hotkeyStateLabel()}`,
-      `録音: ${speechSupported() ? "利用可能" : "利用不可"}`,
-      `ブラウザ音声認識: ${browserSpeechSupported() ? "利用可能" : "利用不可"}`
+      t("ホットキー: {0}", hotkeyStateLabel()),
+      t("録音: {0}", speechSupported() ? t("利用可能") : t("利用不可")),
+      t("ブラウザ音声認識: {0}", browserSpeechSupported() ? t("利用可能") : t("利用不可"))
     ].join("\n");
   }
 
   function hotkeyStateLabel() {
-    if (!appInfo?.hotkeyEnabled) return "アプリ内登録は無効 (OS 側で `speech-popup show` に割り当ててください)";
-    if (appInfo.hotkeyActive) return `${appInfo.hotkeyKey} を登録済み`;
-    return `${appInfo.hotkeyKey} の登録に失敗 — ${appInfo.hotkeyError}`;
+    if (!appInfo?.hotkeyEnabled) return t("アプリ内登録は無効 (OS 側で `speech-popup show` に割り当ててください)");
+    if (appInfo.hotkeyActive) return t("{0} を登録済み", appInfo.hotkeyKey);
+    return t("{0} の登録に失敗 — {1}", appInfo.hotkeyKey, appInfo.hotkeyError);
   }
 
   async function openSettings() {
@@ -715,7 +732,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       await loadAppInfo();
       startupWarning = appInfo?.hotkeyError ?? "";
       renderSettingsInfo();
-      setSettingsStatus(result?.warning ? `保存しました。${result.warning}` : "保存しました。", !!result?.warning);
+      setSettingsStatus(result?.warning ? t("保存しました。{0}", result.warning) : t("保存しました。"), !!result?.warning);
     } catch (caught) {
       setSettingsStatus(message(caught), true);
     }
@@ -785,7 +802,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   vertexDisconnectButton.addEventListener("click", async () => {
     try {
       await appBinding()?.DisconnectVertexOAuth();
-      setSettingsStatus("Google の接続を解除しました。");
+      setSettingsStatus(t("Google の接続を解除しました。"));
     } catch (caught) {
       setSettingsStatus(message(caught), true);
     }
@@ -820,7 +837,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       e.preventDefault();
       if (engine?.busy()) {
         engine.stop();
-        setStatus("録音を中止しました。", true);
+        setStatus(t("録音を中止しました。"), true);
       } else {
         closeWithoutCopy();
       }
@@ -845,7 +862,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     if (e.ctrlKey && !e.shiftKey && (e.key === "d" || e.key === "D")) {
       e.preventDefault();
       engine?.discard();
-      setStatus("保持していた録音を破棄しました。", true);
+      setStatus(t("保持していた録音を破棄しました。"), true);
       return;
     }
     if (e.ctrlKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
@@ -856,18 +873,20 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   // ---- boot ---------------------------------------------------------------
 
   async function boot() {
+    localizeDOM(document);
     setStatus(IDLE_STATUS);
     try {
       await waitForWailsRuntime();
     } catch {
-      setError("バックエンドに接続できません。");
+      setError(t("バックエンドに接続できません。"));
       return;
     }
     const app = appBinding();
+    await app.SetUILanguage?.(getLanguage());
     try {
       config = await app.LoadConfig();
     } catch (caught) {
-      setError(`設定を読み込めません: ${message(caught)}`);
+      setError(t("設定を読み込めません: {0}", message(caught)));
     }
     renderSpeechProvider();
     try {

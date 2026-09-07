@@ -10,6 +10,7 @@ globalThis.window.go = {
     App: {
       CopyToClipboard: (text) => call("CopyToClipboard", text),
       GetAppInfo: () => call("GetAppInfo"),
+      SetUILanguage: (language) => call("SetUILanguage", language),
       HidePopup: () => call("HidePopup"),
       IsVisible: () => call("IsVisible"),
       LoadConfig: () => call("LoadConfig"),
@@ -19,6 +20,7 @@ globalThis.window.go = {
       SaveConfig: (view) => call("SaveConfig", view),
       SaveHistory: (data) => call("SaveHistory", data),
       SetOverlayOpen: (open) => call("SetOverlayOpen", open),
+      ResizePopup: (height) => call("ResizePopup", height),
       ShowPopup: () => call("ShowPopup"),
       SpeechHTTPRequest: (request) => call("SpeechHTTPRequest", request),
       TogglePopup: () => call("TogglePopup"),

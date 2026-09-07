@@ -1,231 +1,209 @@
 # speech-popup
 
-Wails 製の常駐型 **音声入力ポップアップ**。ホットキーで呼び出して話すと、認識結果がクリップボードへ入り、直前のウィンドウへ貼り付けられます。Linux/Wayland (Hyprland)・Windows・macOS 対応。
+[日本語](README_ja.md) · [Privacy](PRIVACY.md) · [Microsoft Store submission](docs/MICROSOFT_STORE.md)
 
-[skk-popup](https://github.com/takeshy/skk-popup) の常駐ポップアップ／クリップボード連携の仕組みはそのまま、入力方式を SKK から音声認識に置き換えたものです。音声認識の実装は [gemihub-desktop](https://github.com/takeshy/gemihub-desktop) の音声入力機能を移植しています。
+A resident voice dictation popup built with Wails. Press a hotkey, speak, edit the transcript, and press Enter to copy it and paste into the previous window.
 
-## 使える音声認識サービス
+![speech-popup icon](build/windows/msix/Assets/Square150x150Logo.png)
 
-既定は **ブラウザ音声認識 (`provider = "browser"`)** です。API Key もサーバーも要らないので、インストール直後にそのまま話せます。ただし音声認識のバックエンドを持つかは WebView 次第で、**WebKitGTK には無く、WebView2 でも動かない場合があります**。その場合はポップアップに理由と `設定を開く` ボタンが出るので、下表の録音方式へ切り替えてください。
+The interface, help, settings and native tray menu support **English and Japanese**. Japanese is selected for a Japanese WebView/OS language; other languages use English. The speech recognition language is a separate setting.
 
-| 方式 | 設定 | 備考 |
+This project adapts the resident popup and clipboard workflow from [skk-popup](https://github.com/takeshy/skk-popup) and speech input from [gemihub-desktop](https://github.com/takeshy/gemihub-desktop).
+
+## Speech services
+
+| Service | Configuration | Authentication |
 |---|---|---|
-| OpenAI | `endpoint_type = "openai"` | `POST {base_url}/audio/transcriptions`。`whisper-1` / `gpt-4o-transcribe` など |
-| OpenAI 互換 (自前ホスト) | `endpoint_type = "custom"` | 同上。Groq・LM Studio・vLLM など |
-| whisper.cpp server | `endpoint_type = "whisper-cpp"` | `POST {base_url}/inference`。ローカルの平文 HTTP を許可。Model 不要 |
-| Gemini API | `endpoint_type = "gemini-transcribe"` | `gemini-3.5-transcribe` に音声を inline で渡す。API Key |
-| Vertex AI | `endpoint_type = "vertex-transcribe"` | `gemini-3.5-transcribe-preview`。Google OAuth (デスクトップクライアント JSON) |
-| ブラウザ音声認識 | `provider = "browser"` | WebView の `SpeechRecognition`。逐次認識だが **WebKitGTK / WebView2 は非対応**。対応環境でのみ選択してください |
+| Browser speech recognition | `provider = "browser"` | WebView-dependent |
+| OpenAI | `endpoint_type = "openai"` | Your API key |
+| OpenAI compatible / self-hosted | `endpoint_type = "custom"` | As required by your server |
+| whisper.cpp server | `endpoint_type = "whisper-cpp"` | Local server; no model field required |
+| Gemini API | `endpoint_type = "gemini-transcribe"` | Your API key |
+| Vertex AI | `endpoint_type = "vertex-transcribe"` | Google OAuth desktop client and Cloud project |
 
-音声は 16kHz モノラル WAV に変換してから送ります (WebM/Opus をデコードできないサーバーでも動くため)。録音は最長 5 分・20MB まで。
+The default is browser recognition, but **WebKitGTK and many WebView2 installations do not provide a working recognition backend**. If unavailable, open Settings and choose a recording-based service. Cloud accounts, API usage charges and local models are not included with the app.
 
-HTTP リクエストは WebView からではなく Go 側のプロキシ (`SpeechHTTPRequest`) を通ります。CORS を回避でき、API Key がプリフライトに乗ることもありません。Vertex AI だけは専用の `VertexSpeechHTTPRequest` を通り、OAuth アクセストークンは**固定のモデル・エンドポイント以外には決して付きません**。
+Recording-based services receive 16 kHz mono WAV audio through the Go backend, avoiding WebView CORS issues. Each recording session is limited to five minutes, with up to 20 MB of queued audio. The Vertex binding only attaches OAuth credentials to its fixed model endpoint.
 
-## 動作要件
+## Requirements
 
-| OS | 必要なもの |
+- **Windows 10/11:** microphone and Microsoft Edge WebView2 Runtime. In-app global hotkeys are supported.
+- **Linux/Wayland:** WebKit2GTK 4.1, `wl-copy`, a microphone, and optionally `wtype` for automatic paste. Hyprland is the primary supported compositor.
+- **macOS:** microphone permission; focus restoration and paste use `osascript` and require the corresponding Accessibility/Automation permissions.
+
+## Everyday use
+
+1. Start the app. It stays in the notification area with a microphone icon.
+2. Press **Ctrl+8** (Windows default), or choose Open speech input from the tray menu.
+3. Speak. Recording starts on opening by default. Pauses segment speech for transcription while recording continues. Ctrl+Space stops recording.
+4. Edit the resulting text, then press **Enter** to copy, close and paste into the previous window.
+5. Alternatively, end with a configured send phrase (default: `over`, `オーバー`) to remove that phrase and copy/close automatically.
+
+The header displays the current transcription service. The tray menu provides Settings, Help and Quit even if the hotkey fails.
+
+### Keyboard shortcuts
+
+| Keys | Action |
 |---|---|
-| Linux + Wayland (Hyprland 推奨) | `wl-clipboard` (`wl-copy`)、WebKit2GTK 4.1、任意で `wtype` (自動貼り付け時)、マイク (PipeWire/PulseAudio) |
-| Windows 10 以降 | 追加要件なし (ホットキーはアプリ内登録) |
-| macOS | **マイク**権限と、`osascript` が使う **Accessibility / Automation** 権限 |
+| Ctrl+Space | Start recording / stop and transcribe |
+| Ctrl+R | Retry the retained recording |
+| Ctrl+D | Discard retained audio |
+| Enter / Shift+Enter | Copy and close / insert newline |
+| Ctrl+A / Ctrl+E | Start / end of line |
+| Ctrl+B / Ctrl+F | Move left / right |
+| Ctrl+K / Ctrl+U | Delete to end / start of line |
+| Ctrl+O | Select all |
+| Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste |
+| Ctrl+Z | Undo |
+| Ctrl+Shift+Z / Ctrl+Y | Redo |
+| Ctrl+↑ / Ctrl+↓ | Browse history / return to draft |
+| Escape / Ctrl+[ | Cancel active recording/transcription, otherwise close and keep the draft |
 
-## 使い方
+Ctrl+K at the end of a line removes the newline and joins the next line. Editing keys match skk-popup. Ctrl+A means **start of line**; use Ctrl+O for select all.
 
-常駐すると**通知領域 (システムトレイ) にマイクのアイコン**が出ます。左クリックで表示/非表示、右クリックで `音声入力を開く` / `設定…` / `ヘルプ` / `終了`。ホットキーが登録できなかった場合でも、ここから設定に到達できます。
+A failed transcription retains its audio for retry, including while you open Settings or correct credentials/endpoints. Switching between browser and recorded recognition discards it. Audio is kept in memory, not across app restarts. A successful transcription consumes the retained recording; copying clears the text and remaining audio.
 
-```text
-speech-popup            デーモンを起動 (常駐)
-speech-popup toggle     表示/非表示をトグル
-speech-popup show       表示、または表示済みの入力欄へフォーカス
-speech-popup hide       非表示
-speech-popup quit       デーモン終了
-speech-popup version    バージョン表示
-```
+Text history keeps the latest 30 unique entries and survives restarts. When the popup reopens, it saves the previous text to history even if you never copied it, and clears the input for a new entry. Use Ctrl+↑ / Ctrl+↓ to retrieve it. External clipboard text is also captured on opening. A draft that has not yet been copied or archived is only kept in memory until exit.
 
-1. ホットキー (既定 **`Ctrl+8`**) で入力窓を出す。`auto_start = true` (既定) なら**その瞬間から録音が始まります**
-2. 話す。無音が `silence_seconds` 続くと自動で停止し、認識が走ります (`Ctrl+Space` / ● ボタンでも停止)
-3. 認識結果がテキストエリアに入る。そのまま手で直せます
-4. `Enter` (または Copy) → クリップボードにコピーして窓が閉じ、直前のウィンドウへ貼り付けられます
-5. 最後に合図の言葉 (既定 `over` / `オーバー`) を話すと、その語を除いて 3〜4 を自動で行います
+### Windows startup
 
-デーモンは常駐するので 2 回目以降の表示は即時です。
+The MSIX package registers a startup task. After installing/updating and launching once, the app starts on subsequent Windows sign-ins. Enable or disable it in **Settings → Apps → Startup → speech-popup**. A previously disabled task must be re-enabled there.
 
-### ホットキー (既定 `Ctrl+8`)
+For a standalone EXE, place a shortcut in `shell:startup` (Win+R). For an installed Store app, drag its entry from `shell:appsfolder` into `shell:startup` if using a version without a startup task.
 
-窓を呼び出すキーの既定は **`Ctrl+8`** です。**`8` の形がマイクに見える**ので覚えやすい、というのが選定理由です。
+### Linux / Hyprland
 
-実用上の理由もあります。`Ctrl+Shift+S` のような「音声 = Speech」から連想しやすい英字の組み合わせは、Windows では OneDrive・ShareX・Snipping Tool などが先に `RegisterHotKey` で握っていることが多く、後から登録しようとすると**黙って失敗します** (エラーコード 1409)。数字キーはその競合を踏みにくい、という実利があります。
-
-なお `RegisterHotKey` はシステム全体でそのキーを横取りするので、`Ctrl+8` を内部で使うアプリ (ブラウザの「8 番目のタブへ移動」など) は、常駐中そのキーを受け取れなくなります。困る場合は設定で変更してください。
-
-- Linux/Hyprland: アプリは登録しません。`bind = CTRL, 8, exec, speech-popup show` を `hyprland.conf` に書きます (下記)
-- Windows: アプリが `RegisterHotKey` で自動登録します
-- macOS: OS 側のショートカット機能から `speech-popup show` を呼びます
-
-### 窓の中のキー操作
-
-- `Ctrl+Space` / ● 録音 — 録音の開始・停止 (停止で認識開始)
-- `Ctrl+R` / 再認識 — 保持している録音をもう一度サーバーへ送る (通信エラーからの復帰用。録り直し不要)
-- `Ctrl+D` — 保持している録音を破棄
-- `Enter` — コピーして閉じる / `Shift+Enter` — 改行
-- 編集 (`skk-popup` と同じ): `Ctrl+A/E` — 行頭/行末、`Ctrl+B/F` — 1文字左/右、`Ctrl+K/U` — 行末/行頭まで削除、`Ctrl+O` — 全選択
-- `Ctrl+C/X/V` — コピー/切り取り/貼り付け、`Ctrl+Z` — 元に戻す、`Ctrl+Shift+Z` / `Ctrl+Y` — やり直す。`Ctrl+K` は行末で押すと改行を削除して次の行と連結
-- `Ctrl+↑` / `Ctrl+↓` — コピー履歴を移動 (最大 30 件。`Ctrl+↓` で下書きに戻る)
-- `Escape` / `Ctrl+[` — 録音中なら中止 / それ以外は閉じる (コピーせず入力内容は次回まで保持)
-- ⋮ メニュー — 設定 / ヘルプ
-
-認識に失敗しても録音は保持されるので、`Ctrl+R` で同じ音声を再送できます。コピーに成功した時点で破棄されます。
-
-再送待ちの録音は、設定を開いたり API Key・接続先を修正したりしても保持されます。ただしブラウザ音声認識と録音方式の切り替え時には破棄され、アプリ終了後には残りません。
-
-テキストのコピー履歴は `skk-popup` と同様に重複を除いて最新30件を保存し、再起動後も `Ctrl+↑` / `Ctrl+↓` で呼び出せます。ポップアップを開いた際の外部クリップボードも履歴へ取り込みます。未コピーの下書きは窓を閉じても保持しますが、アプリ終了時には消えます。
-
-### Hyprland への登録
+Register the hotkey with the compositor; the app does not register Linux hotkeys:
 
 ```ini
-# ~/.config/hypr/hyprland.conf
-
 windowrulev2 = float, class:^(speech-popup)$
 windowrulev2 = center, class:^(speech-popup)$
 windowrulev2 = pin, class:^(speech-popup)$
 windowrulev2 = stayfocused, class:^(speech-popup)$
 windowrulev2 = noborder, class:^(speech-popup)$
 windowrulev2 = noanim, class:^(speech-popup)$
-
 bind = CTRL, 8, exec, speech-popup show
-
 exec-once = uwsm app -- speech-popup
 ```
 
-- `stayfocused` が最重要です。これがないと窓が表示されてもキーボードフォーカスが移りません。
-- 実際の `class` 名は `hyprctl clients` で確認してください。
-- 設定画面の「ショートカット」でキーを入力すると、この `bind =` 行を生成してコピーできます。
+Check the actual class with `hyprctl clients`. Settings can generate a bind line for your chosen shortcut. On macOS, use an OS shortcut tool to run `speech-popup show`.
 
-### Windows
+## Configuration
 
-ホットキーはアプリ自身が `RegisterHotKey` で登録します (既定 `Ctrl+8`、`[hotkey]` で変更・無効化可能)。自動起動はスタートアップフォルダ (`Win+R` → `shell:startup`) にショートカットを置いてください。
+Open **⋮ → Settings**. Changes take effect without restarting. The config file is:
 
-**ホットキーが効かないとき**は、`RegisterHotKey` が他アプリに先を越されている可能性が高いです。切り分けは次の順で:
-
-```powershell
-speech-popup.exe status        # デーモンの生死と config/log の実パス
-speech-popup.exe show          # 窓が出る → ホットキー登録だけが失敗している
-type "$env:AppData\speech-popup\speech-popup.log"   # 理由が残っている
-```
-
-Windows 版は `-H windowsgui` でビルドしているため OS はコンソールを与えません。CLI サブコマンドの出力が消えないよう、起動時に `AttachConsole(ATTACH_PARENT_PROCESS)` で呼び出し元のコンソールへ繋ぎ直しています (`console_windows.go`)。PowerShell は GUI サブシステムの exe を待たないので、**プロンプトが戻ったあとに出力が表示される**ことがあります。
-
-ログには `hotkey: registered Ctrl+8` か、失敗理由 (`...1409` = 既に登録済み) が出ます。登録に失敗している場合は窓の下部にも赤字で表示され、**⋮ → 設定 → 情報**の「ホットキー」欄で現在の状態を確認できます。別のキー (`Ctrl+Alt+S` など) に変えて保存すれば、その場で再登録されます。
-
-### macOS
-
-キーボードショートカットは OS 側に委譲します: [Shortcuts.app](https://support.apple.com/guide/shortcuts-mac/intro-to-shortcuts-apdfebc4f80a/mac) で「シェルスクリプトを実行」→ `speech-popup show` を作り、キーを割り当ててください (skhd / Raycast / Hammerspoon でも可)。
-
-初回実行時に**マイク**、および自動貼り付け・フォーカス復帰のための **Accessibility / Automation** 権限を求められます。設定の `paste_key` の `ctrl` は **Cmd** として扱われます。
-
-## 設定
-
-Linux: `~/.config/speech-popup/config.toml` / Windows: `%AppData%\speech-popup\config.toml` / macOS: `~/Library/Application Support/speech-popup/config.toml`
-
-**⋮ → 設定** で同じ内容を GUI から編集できます。保存すると `config.toml` が書き換わり、**すべての設定が再起動なしで反映されます**。
+- Linux: `~/.config/speech-popup/config.toml` (or `$XDG_CONFIG_HOME`)
+- Windows: `%AppData%\speech-popup\config.toml`
+- macOS: `~/Library/Application Support/speech-popup/config.toml`
 
 ```toml
 [window]
 width = 600
 height = 300
-# 閉じたあとに直前のウィンドウへフォーカスを戻す
 restore_focus = true
 
 [speech]
-# "browser" (WebView の音声認識、既定) | "openai-compatible" (録音して STT へ POST)
-provider = "browser"
-# "openai" | "whisper-cpp" | "custom" | "gemini-transcribe" | "vertex-transcribe"
+provider = "browser" # or "openai-compatible" for recorded services
 endpoint_type = "openai"
 base_url = "https://api.openai.com/v1"
-# 平文で保存される (config.toml は 0600 で書き込まれる)。vertex-transcribe では未使用
-api_key = ""
+api_key = "" # stored in plain text
 model = "whisper-1"
-# BCP-47 (ja / en / ja-JP ...) もしくは "auto"
-language = "auto"
-# 無音がこの秒数続いたら録音を自動停止する (0 で無効)
-silence_seconds = 3
-# 認識結果の末尾がこの語なら、その語を除いてコピーして閉じる (カンマ区切り)
+language = "auto" # speech language, not the UI language
+silence_seconds = 3 # 0 disables silence detection
 send_phrase = "over, オーバー"
-# vertex-transcribe で使う Google Cloud プロジェクト ID
 vertex_project_id = ""
-# ポップアップを開いた直後に録音を開始する
 auto_start = true
 
 [clipboard]
-# "wl-copy" | "wails" (既定: Linux=wl-copy, Windows/macOS=wails)
-backend = "wl-copy"
-# コピー後に自動で貼り付けショートカットを送出 (Linux: wtype, Windows: SendInput, macOS: osascript)
+backend = "wails" # Windows/macOS; Linux defaults to "wl-copy"
 auto_paste = true
-# 自動貼り付け時、フォーカス復帰から送出までの待ち時間 (ミリ秒)
 auto_paste_delay_ms = 80
-# "ctrl+v" | "ctrl+shift+v"
-# foot/alacritty/kitty などの多くのターミナルは Ctrl+V を readline の「次の文字を
-# リテラル入力」に使うため、貼り付けには ctrl+shift+v が必要。
-paste_key = "ctrl+shift+v"
+paste_key = "ctrl+v" # use ctrl+shift+v for terminals
 
 [hotkey]
-# Windows のみ有効。アプリ内でグローバルホットキーを登録する (RegisterHotKey)。
-# 既定は Windows のみ true (Linux は Hyprland bind、macOS は OS のショートカット
-# 機能に委譲するため、他 OS では設定しても無視される)
-enabled = true
-accelerator = "Ctrl+8"   # A-Z, 0-9, F1-F24 + Ctrl/Shift/Alt/Win   # A-Z, 0-9, F1-F24 + Ctrl/Shift/Alt/Win
+enabled = true # Windows only; false by default elsewhere
+accelerator = "Ctrl+8"
 ```
 
-### whisper.cpp をローカルで使う
+### Local whisper.cpp
 
 ```sh
-# whisper.cpp 付属のサーバーを起動
 ./build/bin/whisper-server -m models/ggml-large-v3-turbo.bin --host 127.0.0.1 --port 8080
 ```
 
-設定で サービス = `whisper.cpp server` / Base URL = `http://127.0.0.1:8080` にします (Model は不要)。ローカル宛の平文 HTTP は許可されますが、リンクローカルアドレス (169.254.0.0/16, fe80::/10) はメタデータエンドポイント対策で常に拒否されます。
+Choose whisper.cpp server and set Base URL to `http://127.0.0.1:8080`. Loopback/private HTTP is allowed; direct link-local destinations are blocked by the transport.
 
-### Vertex AI を使う
+### Vertex AI
 
-1. Google Cloud で「デスクトップアプリ」タイプの OAuth クライアントを作り、JSON をダウンロード
-2. 設定 → サービス = `Vertex AI` → **Google に接続** → JSON を選択 → ブラウザで認可
-3. プロジェクト ID を入力して保存
+1. Create a Google Cloud OAuth client of type **Desktop app** and download its JSON.
+2. Select Vertex AI in Settings, choose **Select JSON and connect to Google**, select the JSON and authorize in the browser.
+3. Enter your Cloud project ID and save.
 
-リフレッシュトークンは `<config>/speech-popup/credentials/vertex-oauth.json` に 0600 で保存されます。**接続を解除**すると Google 側でも失効させたうえで削除します。
+OAuth credentials are stored under the config directory in `credentials/vertex-oauth.json`. Disconnect attempts token revocation and removes the local credentials.
 
-## データファイル
+## Local data and privacy
 
-| ファイル | Linux | Windows | macOS |
-|---|---|---|---|
-| コピー履歴 (`history.json`) | `$XDG_DATA_HOME/speech-popup/` | `%LocalAppData%\speech-popup\` | `~/Library/Application Support/speech-popup/` |
-| Vertex OAuth 認証情報 | `~/.config/speech-popup/credentials/` | `%AppData%\speech-popup\credentials\` | `~/Library/Application Support/speech-popup/credentials/` |
-| ログ (`speech-popup.log`) | `~/.config/speech-popup/` | `%AppData%\speech-popup\` | `~/Library/Application Support/speech-popup/` |
+| Data | Location |
+|---|---|
+| Copy history | Linux: `$XDG_DATA_HOME/speech-popup/history.json` or `~/.local/share/speech-popup/history.json` |
+| Copy history | Windows: `%LocalAppData%\speech-popup\history.json` |
+| Copy history | macOS: `~/Library/Application Support/speech-popup/history.json` |
+| Log | Config directory: `speech-popup.log` |
+| Google credentials | Config directory: `credentials/vertex-oauth.json` |
 
-デーモンは Windows では `-H windowsgui`、他 OS でも切り離して起動されるため標準エラー出力が誰にも見えません。起動時のログ (ホットキー登録の成否など) は上記ファイルにも書かれます (1MB を超えたら切り詰め)。
+History writes are debounced by two seconds and flushed when hiding/quitting. Config and credentials contain secrets in plain text; Unix file modes restrict access, but they are not encrypted. MSIX installations may virtualize per-user data paths: the Settings information panel shows the paths requested by the app.
 
-書き込みは最終更新 2 秒後にデバウンスフラッシュされ、窓を閉じるタイミングでも必ずフラッシュされます。
+Audio is sent to the selected service. Browser recognition may use a browser/vendor-operated remote service. There is no app analytics or developer-operated transcription server. See [Privacy](PRIVACY.md).
 
-## 自前でビルドする
+## CLI and troubleshooting
 
-前提:
+```text
+speech-popup            start the resident app
+speech-popup show       show or focus the popup
+speech-popup toggle     toggle visibility
+speech-popup hide       hide the popup
+speech-popup quit       quit
+speech-popup status     show daemon state and config/log paths
+speech-popup version    print version
+```
 
-- Go 1.25 以降 (`.mise.toml` を同梱)
-- Node.js 22 以降 (フロントエンドのコピーとテストのみ。バンドラは使いません)
-- Linux のみ: `libgtk-3-dev` と `libwebkit2gtk-4.1-dev` 相当 (Arch なら `webkit2gtk-4.1`)
+If Ctrl+8 does not work, try `speech-popup show` and inspect `speech-popup.log`. Another app may own the hotkey (Windows error 1409); choose a different key in Settings. Ctrl+8 is intercepted globally while registered, including in browsers.
+
+The Windows GUI EXE attaches to its parent console for CLI output. PowerShell may display the output after returning its prompt.
+
+## Build and test
+
+Go 1.25+ and Node.js 22+ are required. Linux builds also need GTK3 and WebKit2GTK 4.1 development packages.
 
 ```sh
 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.12
-wails3 task linux:build ARCH=amd64       # Linux
-# wails3 task windows:build ARCH=amd64   # Windows
-# wails3 task darwin:build ARCH=arm64    # macOS
-install -Dm755 bin/speech-popup ~/.local/bin/speech-popup
+wails3 task linux:build ARCH=amd64
+wails3 task windows:build ARCH=amd64
+wails3 task darwin:build ARCH=arm64
+npm test
+go test ./... # Linux: add -tags gtk3 when using the GTK3 dependencies
 ```
 
-Linux ビルドは Wails v3 の `gtk3` タグを使い、WebKit2GTK 4.1 環境との互換性を維持します。
+Windows builds generate icon/version resources before compiling. For Store-ready MSIX packages (x64 and ARM64), configure the reserved identity and run `wails3 task windows:msix ARCH=amd64` on Windows with the Windows SDK. See [the submission guide](docs/MICROSOFT_STORE.md). GitHub Actions can build both architectures via the **Windows packages** workflow after identity variables are set.
 
-## テスト
+The UI uses Japanese source messages with an English catalog in `frontend/src/messages.js`; `i18n.js` selects the language and interpolates data without translating it. Native messages live in `internal/i18n`. Extend both catalogs when adding languages.
 
-```sh
-go test ./...              # 設定・履歴ストア・HTTP プロキシ・Vertex ガード
-node --test tests/*.test.js  # 認識リクエストの組み立て・WAV 生成・無音検出
-```
+### Spoken punctuation and line breaks
+
+Set **Pause between utterances (seconds)** to at least 1 (0 disables this feature). Pauses split audio into chunks for ordered transcription and trailing command conversion. The microphone stays open and the next chunk records while the previous request runs. Stop recording with Ctrl+Space or the record button. Browser recognition converts final segments after microphone silence; it requires microphone metering. Manual stop alone does not trigger conversion. Failed recordings preserve this behavior when retried.
+
+| Spoken name | Inserted text |
+| --- | --- |
+| てん / 点 / 読点 | 、 |
+| まる / 丸 / 句点 | 。 |
+| comma / カンマ / コンマ | , |
+| period / full stop / ピリオド | . |
+| question mark / クエスチョンマーク / はてな | ? |
+| exclamation mark / びっくりマーク | ! |
+| new line / newline / Enter / 改行 / エンター | Line break |
+
+Only the trailing name is converted, not commands in the middle of a sentence. Short Japanese names (てん / まる / 点 / 丸) must be recognized as separate words, preceded by whitespace/punctuation or at the start of a segment, to avoid changing words such as 始まる. A spoken line break inserts a newline in the editor; it does not copy or submit. The existing send phrase takes precedence. Recognition accuracy depends on the selected service.
+
+Final recognition results omit an automatic trailing Japanese full stop (`。`). Internal sentence boundaries remain. Say `まる` after silence to insert an explicit `。`. A redundant `。` before `、` is removed, including when the comma is dictated in a later recording.
+
+The popup grows with line breaks and wrapped text, up to 600 px tall (or your configured height if larger), within the available screen height. Beyond that, the editor scrolls. Removing text shrinks it toward the configured height; automatic sizing does not change your saved settings.

@@ -1,0 +1,51 @@
+name: Windows packages
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    env:
+      MSIX_PACKAGE_NAME: ${{ vars.MSIX_PACKAGE_NAME }}
+      MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check Store identity
+        shell: pwsh
+        run: |
+          if (-not $env:MSIX_PACKAGE_NAME -or -not $env:MSIX_PUBLISHER) {
+            throw 'Set repository variables MSIX_PACKAGE_NAME and MSIX_PUBLISHER from Partner Center.'
+          }
+      - name: Test
+        shell: pwsh
+        run: |
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build MSIX
+        shell: pwsh
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.12
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          wails3 task windows:msix ARCH=${{ matrix.arch }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: speech-popup-windows-${{ matrix.arch }}
+          path: |
+            bin/speech-popup.exe
+            bin/speech-popup-windows-*.msix
+          if-no-files-found: error

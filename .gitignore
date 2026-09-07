@@ -4,3 +4,4 @@
 node_modules/
 *.syso
 .task/
+/build/windows/msix/store.json

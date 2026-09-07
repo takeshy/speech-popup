@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { setLanguage } from "../frontend/src/i18n.js";
+setLanguage("ja");
 import {
   combineSpeechWavs,
   encodeSpeechWav,
@@ -235,4 +237,32 @@ test("transcribeSpeech rejects a truncated Gemini candidate", async () => {
     ),
     /打ち切/
   );
+});
+
+test("spoken punctuation and Enter convert only after final silence", () => {
+  for (const [name, symbol] of [["てん", "、"], ["まる", "。"], ["カンマ", ","], ["コンマ", ","], ["ピリオド", "."], ["はてな", "?"], ["クエスチョンマーク", "?"], ["びっくりマーク", "!"], ["改行", "\n"], ["エンター", "\n"], ["Enter", "\n"], ["new line", "\n"], ["comma", ","], ["period", "."], ["question mark", "?"], ["句点", "。"], ["読点", "、"]]) {
+    assert.equal(speechDraft("", `hello ${name}。`, true, "", true).text, `hello${symbol}`);
+    assert.equal(speechDraft("hello", name, true, "", true).text, `hello${symbol}`);
+    assert.equal(speechDraft("", name, false, "", true).text, name);
+    assert.equal(speechDraft("", name, true, "", false).text, name);
+  }
+  assert.equal(speechDraft("", "カンマについて話す", true, "", true).text, "カンマについて話す");
+  assert.equal(speechDraft("", "会議が始まる", true, "", true).text, "会議が始まる");
+  assert.equal(speechDraft("", "disenter", true, "", true).text, "disenter");
+  assert.equal(speechDraft("hello\n", "world", true, "", true).text, "hello\nworld");
+  assert.equal(speechDraft("hello\n", "改行", true, "", true).text, "hello\n\n");
+  assert.deepEqual(speechDraft("", "hello 改行 over", true, "over", true), { text: "hello 改行", send: true });
+});
+
+test("Japanese automatic full stops yield to explicit punctuation", () => {
+  assert.equal(speechDraft("", "きょうは。てん。", true, "", true).text, "きょうは、");
+  assert.equal(speechDraft("", "きょうは。、", true, "", true).text, "きょうは、");
+  assert.equal(speechDraft("きょうは。", "てん", true, "", true).text, "きょうは、");
+  assert.equal(speechDraft("", "きょうは。", true, "").text, "きょうは");
+  assert.equal(speechDraft("", "きょうは。", false, "").text, "きょうは。");
+  assert.equal(speechDraft("", "きょうは。まる。", true, "", true).text, "きょうは。");
+  assert.equal(speechDraft("", "まる。", true, "", true).text, "。");
+  assert.equal(speechDraft("", "きょうは。晴れです。", true, "").text, "きょうは。晴れです");
+  assert.equal(speechDraft("", "Hello.", true, "").text, "Hello.");
+  assert.equal(speechDraft("前の入力。", "次の入力。", true, "").text, "前の入力。 次の入力");
 });

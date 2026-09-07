@@ -4,6 +4,9 @@ import test from "node:test";
 import vm from "node:vm";
 import { createRecorder, speechSupported } from "../frontend/src/recorder.js";
 import { createTextEditor } from "../frontend/src/editor.js";
+import { createAutoSizer } from "../frontend/src/autosize.js";
+import { t as translate, setLanguage, getLanguage } from "../frontend/src/i18n.js";
+setLanguage("ja");
 import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "../frontend/src/speech.js";
 
 // Run the UI with its real recorder and speech transport, replacing only the
@@ -19,7 +22,7 @@ async function until(predicate) {
   assert.fail("UI did not reach the expected state");
 }
 
-async function setup(t, { history = [], copyFails = false } = {}) {
+async function setup(t, { history = [], copyFails = false, vertexClient = null } = {}) {
   let microphoneRequests = 0;
   const audioGlobals = {
     navigator: { mediaDevices: { getUserMedia: async () => {
@@ -87,6 +90,7 @@ async function setup(t, { history = [], copyFails = false } = {}) {
   let ready;
   const booted = new Promise((resolve) => { ready = resolve; });
   const requests = [];
+  const vertexConnections = [];
   const app = {
     LoadConfig: async () => structuredClone(config),
     SaveConfig: async (view) => { config = structuredClone(view); return {}; },
@@ -95,6 +99,9 @@ async function setup(t, { history = [], copyFails = false } = {}) {
     GetAppInfo: async () => ({ os: "linux", version: "test" }),
     NotifyReady: async () => ready(),
     SetOverlayOpen: async () => {},
+    SelectVertexOAuthClient: async () => vertexClient,
+    ConnectVertexOAuth: async (...args) => { vertexConnections.push(args); },
+    GetVertexOAuthStatus: async () => ({ connected: vertexConnections.length > 0, clientId: vertexClient?.clientId }),
     ReadClipboard: async () => "",
     CopyToClipboard: async () => { if (copyFails) throw new Error("copy failed"); },
     HidePopup: async () => { hides++; events["popup:hidden"](); },
@@ -111,7 +118,8 @@ async function setup(t, { history = [], copyFails = false } = {}) {
     window: { go: { main: { App: app } }, runtime: {
       EventsOn(name, callback) { events[name] = callback; }
     } },
-    createRecorder, createTextEditor, speechSupported, endpointPreset, isGoogleEndpoint, validateSpeechSettings,
+    createRecorder, createTextEditor, createAutoSizer, speechSupported, endpointPreset, isGoogleEndpoint, validateSpeechSettings,
+    t: translate, getLanguage, localizeDOM() {},
     createAudioMeter: () => ({ attach: async () => true }),
     browserSpeechSupported: () => false,
     URL, setTimeout, clearTimeout, clearInterval,
@@ -123,7 +131,7 @@ async function setup(t, { history = [], copyFails = false } = {}) {
   });
   vm.runInContext(source, context);
   await booted;
-  return { element, events, requests, history: () => JSON.parse(savedHistory),
+  return { element, events, requests, vertexConnections, history: () => JSON.parse(savedHistory),
     hides: () => hides, microphoneRequests: () => microphoneRequests };
 }
 
@@ -193,4 +201,62 @@ test("history restores on boot, returns to the draft, and persists copied text",
   assert.deepEqual(ui.history(), [...initial.slice(1), "draft"]);
   input.fire("keydown", { ctrlKey: true, key: "ArrowUp" });
   assert.equal(input.value, "draft");
+});
+
+test("English UI displays the provider, settings and transcription errors in English", async (t) => {
+  setLanguage("en");
+  t.after(() => setLanguage("ja"));
+  const ui = await setup(t);
+  assert.equal(ui.element("speech-provider").textContent, "Transcription: OpenAI");
+  assert.equal(ui.element("mode").textContent, "Idle");
+  ui.element("record").fire("click");
+  await until(() => ui.element("mode").dataset.recording === "true");
+  assert.equal(ui.element("mode").textContent, "Recording");
+  ui.element("record").fire("click");
+  await until(() => ui.requests.length === 1 && !ui.element("retry").hidden);
+  assert.match(ui.element("error").textContent, /Speech recognition failed: STT HTTP 401/);
+  ui.element("menu-settings").fire("click");
+  await until(() => ui.element("cfg-speech-api-key").value === "invalid");
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").textContent === "Saved.");
+});
+
+test("reopening archives uncopied text, clears the editor and allows history retrieval", async (t) => {
+  const ui = await setup(t, { history: ["older"] });
+  const input = ui.element("input");
+  input.value = " uncopied\ntext ";
+  ui.element("close").fire("click");
+  ui.events["popup:shown"]("help");
+  assert.equal(input.value, "");
+  assert.deepEqual(ui.history(), ["older", " uncopied\ntext "]);
+  ui.element("help-close").fire("click");
+  input.fire("keydown", { ctrlKey: true, key: "z" });
+  assert.equal(input.value, "", "new session must clear the old undo stack");
+  input.fire("keydown", { ctrlKey: true, key: "ArrowUp" });
+  assert.equal(input.value, " uncopied\ntext ");
+  input.fire("keydown", { ctrlKey: true, key: "ArrowDown" });
+  assert.equal(input.value, "");
+  ui.events["popup:shown"]("help");
+  assert.deepEqual(ui.history(), ["older", " uncopied\ntext "], "empty input adds no entry");
+});
+
+test("Vertex JSON populates the project and passes client credentials to Google connection", async (t) => {
+  const ui = await setup(t, { vertexClient: { clientId: "desktop-client", clientSecret: "secret", projectId: "cloud-project" } });
+  ui.element("menu-settings").fire("click");
+  await until(() => ui.element("cfg-speech-api-key").value === "invalid");
+  ui.element("vertex-connect").fire("click");
+  await until(() => ui.element("settings-status").textContent === "Google に接続しました。");
+  assert.deepEqual(ui.vertexConnections, [["desktop-client", "secret"]]);
+  assert.equal(ui.element("cfg-speech-vertex-project").value, "cloud-project");
+  ui.element("cfg-speech-vertex-project").value = "billing-project";
+  ui.element("vertex-connect").fire("click");
+  await until(() => ui.vertexConnections.length === 2);
+  assert.equal(ui.element("cfg-speech-vertex-project").value, "billing-project");
+});
+
+test("canceling the Vertex JSON picker does not start OAuth", async (t) => {
+  const ui = await setup(t);
+  ui.element("vertex-connect").fire("click");
+  await until(() => ui.element("settings-status").textContent === "");
+  assert.deepEqual(ui.vertexConnections, []);
 });

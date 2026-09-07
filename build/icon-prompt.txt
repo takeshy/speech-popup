@@ -1,0 +1,6 @@
+Generator: built-in image_gen tool
+Output: build/appicon.png (original generated PNG)
+Windows ICO and MSIX logos: resized from the original, preserving alpha.
+Tray icons: existing simple microphone marks for small notification-area sizes.
+
+Use case: logo-brand. Asset type: production Windows desktop and Microsoft Store app icon for speech-popup, a voice dictation popup. Primary request: a polished, distinctive and instantly readable microphone combined with a speech bubble, suggesting voice becoming text. Style: restrained modern flat icon with subtle depth, crisp generous shapes, no fine details. Palette: deep teal and turquoise with warm white. Composition: square 1024x1024, one large centered mark within a softly rounded square tile, generous safe margin, silhouette readable at 16 and 32 pixels. Transparent outside the rounded tile, genuinely transparent alpha. No letters, no text, no watermark, no mockup, no multiple variants, no drop shadow outside the tile. Professional productivity utility, friendly and calm.

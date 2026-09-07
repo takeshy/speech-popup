@@ -1,0 +1,41 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>speech-popup — Privacy</title><style>body{font:16px/1.7 system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 20px;color:#172033;background:#f7f9fc}a{color:#006d77}section{margin-bottom:60px}code{overflow-wrap:anywhere}</style><nav id="languages"><a href="#en">English</a> · <a href="#ja">日本語</a> · <a href="../">speech-popup</a></nav><section id="en" lang="en"><h1>Privacy policy — speech-popup</h1>
+<p><a href="#languages">日本語</a> · Last updated: September 7, 2026</p>
+<p>speech-popup is a desktop voice-input utility developed by takeshy. This policy describes the application&#x27;s behavior; the speech service you choose has its own terms and privacy policy.</p>
+<h2>Microphone and speech services</h2>
+<p>The app uses your microphone when recording or browser speech recognition is started. By default, opening the popup starts recording; you can disable this in Settings. Hiding the popup stops microphone capture.</p>
+<p>For recorded transcription, audio is converted to WAV and sent directly from your computer to your selected OpenAI, OpenAI-compatible, whisper.cpp, Gemini or Vertex AI endpoint. A local endpoint keeps this request local to that server; a cloud or remote endpoint receives the audio. Browser speech recognition is provided by the WebView/browser vendor and may send audio to its service.</p>
+<p>The developer does not operate a transcription server or receive your audio through an app-operated relay. Providers may retain or process data according to their own policies. Cloud services may require a separate account and incur charges.</p>
+<p>The app retains failed recordings in memory for retry. It does not write recordings to its own audio files. Audio is discarded on successful transcription, explicit discard, certain session/provider changes, or app exit. WebView, operating-system and provider behavior is outside this local retention mechanism.</p>
+<h2>Clipboard and history</h2>
+<p>Copying places text on the system clipboard. Automatic paste can send it to the previously focused application; you can disable automatic paste.</p>
+<p>Each time the popup opens, it reads the current clipboard text and adds it to local history. This can include sensitive text copied in other applications. The app stores up to 30 unique history entries in <code>history.json</code>. It does not upload this history. On reopening the popup, the previous draft is also saved to this history and the input is cleared, even if it was never copied. A draft that has not yet been copied or archived remains only in memory and is not restored after exit.</p>
+<h2>Settings, credentials and logs</h2>
+<p>Settings and API keys are stored in <code>config.toml</code>. Google OAuth client information, refresh/access tokens and expiry are stored in <code>credentials/vertex-oauth.json</code>. These files are not encrypted. Files are written with restrictive Unix modes where supported; Windows access depends on the containing profile and its permissions.</p>
+<p>The app uses Google OAuth to authenticate Vertex AI requests. Disconnecting attempts to revoke the refresh token and deletes local credentials. If revocation fails, you can remove the application&#x27;s access in your Google account separately.</p>
+<p>A local diagnostic log records startup, hotkey and operational errors. The app does not deliberately log audio, transcripts or API keys, but external error messages may contain additional details. Review logs before sharing them.</p>
+<h2>Analytics and control</h2>
+<p>The app contains no advertising or analytics SDK and does not sell user data. Optional provider services are contacted only as part of the functionality you use.</p>
+<p>To remove local data, quit the app and delete its history, configuration, credentials and logs. The Settings information panel and README describe the paths; Windows package virtualization may place Store-app data under the package&#x27;s profile directories. Deleting local data does not delete copies held by a speech provider, the clipboard manager or applications where you pasted text.</p>
+<p>You can turn off automatic recording/paste in Settings, deny microphone access through the OS, and disable automatic startup in Windows Settings → Apps → Startup.</p>
+<h2>Contact and changes</h2>
+<p>For questions or requests, use <a href="https://github.com/takeshy/speech-popup/issues">the project issue tracker</a>. Do not post API keys, tokens or sensitive transcripts publicly. This policy will be updated when relevant application behavior changes.</p></section><section id="ja" lang="ja"><h1>プライバシーポリシー — speech-popup</h1>
+<p><a href="#languages">English</a> · 更新日: 2026年9月7日</p>
+<p>speech-popup は takeshy が開発するデスクトップ音声入力アプリです。この文書はアプリの動作を説明します。選択した音声認識サービスには、その提供者の利用規約・プライバシーポリシーが別途適用されます。</p>
+<h2>マイクと音声認識</h2>
+<p>録音・ブラウザ音声認識を開始するとマイクを使用します。既定ではポップアップを開くと録音を開始しますが、設定で無効化できます。窓を隠すとマイクの取得を停止します。</p>
+<p>録音方式では音声を WAV に変換し、コンピューターから選択した OpenAI・OpenAI 互換・whisper.cpp・Gemini・Vertex AI の接続先へ直接送信します。ローカル接続先ならそのサーバーまで、クラウドやリモート接続先ならそのサービスへ送信します。ブラウザ音声認識は WebView/ブラウザ提供者の機能を使い、外部サービスへ音声を送信する場合があります。</p>
+<p>開発者が運営する認識サーバーや中継サーバーはありません。提供者によるデータの保存・処理は各サービスのポリシーに従います。クラウドサービスには別のアカウントや利用料金が必要な場合があります。</p>
+<p>認識に失敗した音声は再送用にメモリに保持します。アプリ自身は音声ファイルとして保存しません。認識成功・明示的な破棄・一部のセッションや方式の変更・アプリ終了で破棄されます。WebView・OS・認識サービスの動作はこの保持機構の範囲外です。</p>
+<h2>クリップボードと履歴</h2>
+<p>コピー操作は認識結果をシステムのクリップボードに入れます。自動貼り付けが有効なら、直前のアプリへテキストを貼り付けます。自動貼り付けは設定で無効化できます。</p>
+<p>ポップアップを開くたびに現在のクリップボードのテキストを読み取り、ローカル履歴に加えます。他のアプリでコピーした機密情報が含まれる場合があります。履歴は最大30件、重複を除いて <code>history.json</code> に保存します。履歴をアップロードしません。次回ポップアップを開いた際、未コピーの下書きも履歴へ保存して入力欄を空にします。コピーも次回表示もしていない下書きはメモリにのみ保持し、終了後には復元しません。</p>
+<h2>設定・認証情報・ログ</h2>
+<p>設定と API Key は <code>config.toml</code>、Google OAuth クライアント情報・リフレッシュトークン・アクセストークン・有効期限は <code>credentials/vertex-oauth.json</code> に保存します。暗号化はしていません。対応する Unix 環境では制限付きのファイルモードで作成し、Windows では保存先のユーザープロファイルとアクセス権に従います。</p>
+<p>Google OAuth は Vertex AI リクエストの認証に使用します。接続解除時はリフレッシュトークンの失効を試み、ローカルの認証情報を削除します。失効処理に失敗した場合は Google アカウント側でもアクセス権を解除できます。</p>
+<p>診断ログには起動・ホットキー・操作上のエラーを記録します。音声・認識結果・API Key を意図的には記録しませんが、外部からのエラーメッセージに追加情報が含まれる可能性があります。共有前に内容を確認してください。</p>
+<h2>解析とユーザーによる管理</h2>
+<p>広告・利用状況解析 SDK は含まず、ユーザーデータを販売しません。外部サービスへの接続は利用する機能に伴って行います。</p>
+<p>ローカルデータを削除するにはアプリを終了し、履歴・設定・認証情報・ログを削除してください。設定の情報欄と README にパスを示しています。Store 版は Windows のパッケージ仮想化によりパッケージのプロファイル配下に保存される場合があります。ローカル削除は、サービス提供者・クリップボード管理アプリ・貼り付け先が保持するデータの削除にはなりません。</p>
+<p>設定から自動録音・自動貼り付けを無効化できます。OS でマイク権限を拒否でき、Windows の「設定 → アプリ → スタートアップ」から自動起動を無効化できます。</p>
+<h2>お問い合わせと更新</h2>
+<p>お問い合わせは <a href="https://github.com/takeshy/speech-popup/issues">プロジェクトの Issue</a> へお願いします。API Key・トークン・機密の認識結果を公開投稿しないでください。関連する動作が変わった場合、このポリシーを更新します。</p></section></html>
