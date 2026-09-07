@@ -19,16 +19,13 @@ const (
 // Settings is to get the popup open first, which is exactly what fails when
 // the hotkey did not register.
 //
-// It must run after the application is started (SystemTray.Run is a no-op
-// before that), so main hooks it to events.Common.ApplicationStarted.
+// Call before application.Run: SystemTray.New queues its own Run for startup,
+// allowing the icon, menu and handlers to be configured before native creation.
 func (a *App) startSystemTray(icon, darkIcon []byte) {
 	if a.application == nil {
 		return
 	}
-	// ApplicationStarted is delivered more than once on Windows, and each
-	// delivery arrives on its own goroutine, so a check-then-act guard races
-	// and both callers get past it. The result is two notification icons
-	// sharing one menu. sync.Once is the only guard that actually holds here.
+	// Keep registration idempotent if another startup path requests the tray.
 	a.trayOnce.Do(func() { a.createSystemTray(icon, darkIcon) })
 }
 
@@ -55,10 +52,11 @@ func (a *App) createSystemTray(icon, darkIcon []byte) {
 	// stay wherever the compositor centres it. Right-click is left to Run's
 	// smart default, which opens the menu the native way on each platform.
 	tray.OnClick(a.TogglePopup)
-	tray.Run()
+	// Do not call tray.Run here: New already scheduled it. Run is not
+	// idempotent and a second call leaks the first native notification icon.
 
 	a.mu.Lock()
 	a.tray = tray
 	a.mu.Unlock()
-	log.Print("system tray: ready")
+	log.Print("system tray: configured for startup")
 }

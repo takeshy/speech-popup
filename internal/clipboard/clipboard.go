@@ -13,7 +13,6 @@ type Copier struct {
 	mu      sync.Mutex
 	backend string
 	setText func(string) bool
-	lastCmd *exec.Cmd
 }
 
 // New creates a copier. setText provides the native clipboard implementation;
@@ -27,13 +26,9 @@ func New(backend string, setText func(string) bool) *Copier {
 
 // Copy places text on the clipboard.
 //
-// With the wl-copy backend a previous wl-copy child is killed first so
-// repeated copies do not accumulate background processes; wl-copy itself
-// forks immediately and keeps serving the selection from the new process.
-// The immediate child still needs to be reaped once it exits (whether it
-// forked away on its own or was killed here), so each one is waited on in
-// its own goroutine instead of being left as a zombie for the life of the
-// daemon.
+// wl-copy forks a child to serve the selection. Wait for its parent to finish
+// setting the selection before reporting success; otherwise a failed copy
+// would still clear the frontend's draft and trigger a paste of stale text.
 func (c *Copier) Copy(text string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -42,15 +37,7 @@ func (c *Copier) Copy(text string) error {
 		if _, err := exec.LookPath("wl-copy"); err == nil {
 			cmd := exec.Command("wl-copy")
 			cmd.Stdin = strings.NewReader(text)
-			if err := cmd.Start(); err != nil {
-				return err
-			}
-			go cmd.Wait()
-			if c.lastCmd != nil && c.lastCmd.Process != nil {
-				_ = c.lastCmd.Process.Kill()
-			}
-			c.lastCmd = cmd
-			return nil
+			return cmd.Run()
 		}
 	}
 	if c.setText == nil || !c.setText(text) {

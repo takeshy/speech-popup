@@ -4,6 +4,7 @@
 import { createRecorder, speechSupported } from "./recorder.js";
 import { browserSpeechSupported, createBrowserRecognizer } from "./browser_speech.js";
 import { createAudioMeter } from "./meter.js";
+import { createTextEditor } from "./editor.js";
 import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./speech.js";
 
 (() => {
@@ -11,6 +12,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
 
   const inputEl = document.getElementById("input");
   const modeEl = document.getElementById("mode");
+  const speechProviderEl = document.getElementById("speech-provider");
   const statusEl = document.getElementById("status");
   const errorEl = document.getElementById("error");
   const errorSettingsButton = document.getElementById("error-settings");
@@ -85,6 +87,12 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     "認識結果はそのまま編集できます (通常のテキストエリア)",
     "Enter                 コピーして閉じる",
     "Shift+Enter           改行",
+    "Ctrl+A / Ctrl+E       行頭 / 行末",
+    "Ctrl+B / Ctrl+F       1文字左 / 右",
+    "Ctrl+K / Ctrl+U       行末まで削除 / 行頭まで削除",
+    "Ctrl+O                全選択",
+    "Ctrl+C / X / V        コピー / 切り取り / 貼り付け",
+    "Ctrl+Z                元に戻す (Ctrl+Shift+Z / Ctrl+Y でやり直す)",
     "Ctrl+↑ / Ctrl+↓       コピー履歴を移動 (最大 30 件。Ctrl+↓ で下書きに戻る)",
     "",
     "── その他 ──",
@@ -115,6 +123,11 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   let configurationError = false;
 
   const meter = createAudioMeter(meterEl);
+  const editor = createTextEditor(inputEl, () => {
+    historyIndex = -1;
+    stickyStatus = "";
+    refreshStatus();
+  });
 
   // ---- Wails bridge -------------------------------------------------------
 
@@ -198,8 +211,9 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   // ---- text ---------------------------------------------------------------
 
   function setText(text) {
-    inputEl.value = text;
-    inputEl.setSelectionRange(text.length, text.length);
+    const index = historyIndex;
+    editor.setText(text);
+    historyIndex = index;
   }
 
   // setError shows the message; offerSettings adds the shortcut to the dialog
@@ -221,6 +235,21 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   }
 
   // ---- speech engine ------------------------------------------------------
+
+  function renderSpeechProvider() {
+    const speech = config?.speech;
+    const names = {
+      openai: "OpenAI",
+      custom: "OpenAI 互換",
+      "whisper-cpp": "whisper.cpp",
+      "gemini-transcribe": "Gemini",
+      "vertex-transcribe": "Vertex AI"
+    };
+    const name = speech?.provider === "browser"
+      ? "ブラウザ"
+      : names[speech?.endpointType] ?? "未設定";
+    speechProviderEl.textContent = `書き起こし: ${name}`;
+  }
 
   function speechSettings() {
     const speech = config?.speech ?? {};
@@ -325,6 +354,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   }
 
   function toggleRecording() {
+    if (overlayOpen()) return;
     startupWarning = "";
     configurationError = false;
     setError("");
@@ -378,7 +408,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     }
     addHistory(text);
     engine?.discard();
-    setText("");
+    editor.reset();
     setStatus("コピーしました。", true);
     await hidePopupWindow();
   }
@@ -476,6 +506,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   // ---- settings -----------------------------------------------------------
 
   function fillSettingsForm(view) {
+    renderSpeechProvider();
     cfgFields.speechProvider.value = view.speech.provider;
     cfgFields.speechEndpoint.value = view.speech.endpointType;
     cfgFields.speechBaseUrl.value = view.speech.baseUrl;
@@ -648,7 +679,9 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
 
   async function openSettings() {
     setMenuOpen(false);
-    engine?.discard();
+    settingsOverlay.dataset.open = "true";
+    setOverlayOpen(true);
+    engine?.stop();
     try {
       config = await appBinding()?.LoadConfig();
     } catch (caught) {
@@ -657,8 +690,6 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     if (config) fillSettingsForm(config);
     setSettingsStatus("");
     renderSettingsInfo();
-    settingsOverlay.dataset.open = "true";
-    setOverlayOpen(true);
     cfgFields.speechProvider.focus();
   }
 
@@ -673,11 +704,14 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     try {
       const result = await appBinding()?.SaveConfig(view);
       config = await appBinding()?.LoadConfig();
-      // The provider may have changed; drop the engine so the next recording
-      // is built from the new settings.
-      engine?.discard();
-      engine = null;
-      engineProvider = null;
+      // HTTP engines read settings for every retry, so changing credentials
+      // or endpoints must leave the retained recording available.
+      if (engine && engineProvider !== speechSettings().provider) {
+        engine.discard();
+        engine = null;
+        engineProvider = null;
+      }
+      renderSpeechProvider();
       await loadAppInfo();
       startupWarning = appInfo?.hotkeyError ?? "";
       renderSettingsInfo();
@@ -778,14 +812,10 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   closeButton.addEventListener("click", closeWithoutCopy);
 
   inputEl.addEventListener("keydown", handleKeydown);
-  inputEl.addEventListener("input", () => {
-    historyIndex = -1;
-    stickyStatus = "";
-    refreshStatus();
-  });
 
   function handleKeydown(e) {
     if (e.isComposing) return;
+    if (editor.handleKeydown(e)) return;
     if (e.key === "Escape" || (e.ctrlKey && e.key === "[")) {
       e.preventDefault();
       if (engine?.busy()) {
@@ -839,6 +869,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     } catch (caught) {
       setError(`設定を読み込めません: ${message(caught)}`);
     }
+    renderSpeechProvider();
     try {
       const raw = await app.LoadHistory();
       const parsed = JSON.parse(raw);
@@ -856,6 +887,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   globalThis.window?.runtime?.EventsOn?.("popup:shown", onPopupShown);
   globalThis.window?.runtime?.EventsOn?.("popup:focus-input", (overlay) => {
     if (openRequestedOverlay(overlay)) return;
+    if (overlayOpen()) return;
     focusInput();
     if (config?.speech?.autoStart && !engine?.busy()) toggleRecording();
   });

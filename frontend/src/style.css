@@ -48,6 +48,17 @@ h1 {
   line-height: 1.2;
 }
 
+.header-title {
+  min-width: 0;
+}
+
+.speech-provider {
+  margin: 3px 0 0;
+  font-size: 11px;
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}
+
 .mode {
   --wails-draggable: no-drag;
   padding: 3px 7px;

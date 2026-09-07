@@ -10,7 +10,6 @@ import (
 	"github.com/takeshy/speech-popup/internal/config"
 	"github.com/takeshy/speech-popup/internal/ipc"
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 //go:embed all:frontend/dist
@@ -125,13 +124,6 @@ func runDaemon() {
 	app := NewApp(wailsApp, cfg)
 	wailsApp.RegisterService(application.NewService(app))
 
-	// The tray is the daemon's only permanently visible affordance, and the
-	// fallback route to Settings when the hotkey could not be registered.
-	// SystemTray.Run does nothing before the application is running.
-	wailsApp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		app.startSystemTray(trayIcon, trayIconDark)
-	})
-
 	window := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             "popup",
 		Title:            "speech-popup",
@@ -158,6 +150,9 @@ func runDaemon() {
 		Linux: application.LinuxWindow{Icon: appIcon},
 	})
 	app.SetWindow(window)
+	// New queues the tray for Wails startup. Configure its icon and callbacks
+	// before Run so the native tray is created exactly once, fully configured.
+	app.startSystemTray(trayIcon, trayIconDark)
 
 	if err := wailsApp.Run(); err != nil {
 		log.Fatal(err)

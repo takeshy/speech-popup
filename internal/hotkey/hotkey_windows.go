@@ -9,6 +9,7 @@ package hotkey
 
 import (
 	"fmt"
+	"log"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -22,6 +23,7 @@ var (
 	procRegisterHotKey     = user32.NewProc("RegisterHotKey")
 	procUnregisterHotKey   = user32.NewProc("UnregisterHotKey")
 	procGetMessage         = user32.NewProc("GetMessageW")
+	procPeekMessage        = user32.NewProc("PeekMessageW")
 	procPostThreadMessage  = user32.NewProc("PostThreadMessageW")
 	procGetCurrentThreadId = kernel32.NewProc("GetCurrentThreadId")
 )
@@ -60,6 +62,7 @@ func Start(accelerator string, onTrigger func()) (*Manager, error) {
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
+		defer close(m.done)
 
 		tid, _, _ := procGetCurrentThreadId.Call()
 		m.threadID = uint32(tid)
@@ -69,9 +72,14 @@ func Start(accelerator string, onTrigger func()) (*Manager, error) {
 			startErr <- fmt.Errorf("RegisterHotKey(%s): %v", accelerator, callErr)
 			return
 		}
-		close(startErr)
+		// A windowless hotkey belongs to this thread and must be freed here.
+		defer procUnregisterHotKey.Call(0, hotkeyID)
 
 		var msg [msgBufferSize]byte
+		// Ensure PostThreadMessage can reach us even if Stop follows Start
+		// immediately, before the first blocking GetMessage call.
+		procPeekMessage.Call(uintptr(unsafe.Pointer(&msg[0])), 0, 0, 0, 0)
+		close(startErr)
 		for {
 			r, _, _ := procGetMessage.Call(
 				uintptr(unsafe.Pointer(&msg[0])),
@@ -86,7 +94,6 @@ func Start(accelerator string, onTrigger func()) (*Manager, error) {
 				go onTrigger()
 			}
 		}
-		close(m.done)
 	}()
 
 	if err := <-startErr; err != nil {
@@ -98,10 +105,17 @@ func Start(accelerator string, onTrigger func()) (*Manager, error) {
 // Stop unregisters the hotkey and terminates the message loop.
 func (m *Manager) Stop() {
 	m.stopOnce.Do(func() {
-		procUnregisterHotKey.Call(0, hotkeyID)
-		if m.threadID != 0 {
-			procPostThreadMessage.Call(uintptr(m.threadID), wmQuit, 0, 0)
+		select {
+		case <-m.done:
+			return
+		default:
 		}
+		if ret, _, err := procPostThreadMessage.Call(uintptr(m.threadID), wmQuit, 0, 0); ret == 0 {
+			log.Printf("hotkey: could not stop message loop: %v", err)
+			return
+		}
+		// A caller may re-register the same key as soon as Stop returns.
+		<-m.done
 	})
 }
 
