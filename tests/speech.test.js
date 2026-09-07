@@ -275,3 +275,61 @@ test("Japanese automatic full stops yield to explicit punctuation", () => {
   assert.equal(speechDraft("", "Hello.", true, "").text, "Hello.");
   assert.equal(speechDraft("前の入力。", "次の入力。", true, "").text, "前の入力。 次の入力");
 });
+
+test("Azure MAI sends WAV and enhanced-mode definition with subscription-key authentication", async () => {
+  const settings = { ...baseSettings, ...endpointPreset("azure-mai-transcribe"),
+    endpointType: "azure-mai-transcribe", baseUrl: "https://resource.cognitiveservices.azure.com/", apiKey: " azure-key " };
+  const expectedURL = "https://resource.cognitiveservices.azure.com/speechtotext/transcriptions:transcribe?api-version=2025-10-15";
+  assert.equal(validateSpeechSettings(settings), expectedURL);
+  assert.throws(() => validateSpeechSettings({ ...settings, apiKey: " " }), /API Key/);
+  assert.throws(() => validateSpeechSettings({ ...settings, model: "" }), /Model/);
+  assert.throws(() => validateSpeechSettings({ ...settings, language: "not a tag" }), /BCP-47/);
+  for (const language of ["auto", "ja", "en-US"]) {
+    const audio = encodeSpeechWav(Float32Array.from([0.1, -0.2]));
+    const text = await transcribeSpeech(audio, { ...settings, language }, async (request) => {
+      assert.equal(request.url, expectedURL);
+      assert.equal(request.method, "POST");
+      assert.equal(request.headers["Ocp-Apim-Subscription-Key"], "azure-key");
+      assert.equal(request.headers.Authorization, undefined);
+      const form = await new Response(Buffer.from(request.bodyBase64, "base64"), { headers: request.headers }).formData();
+      assert.deepEqual([...form.keys()].sort(), ["audio", "definition"]);
+      assert.deepEqual(await form.get("audio").arrayBuffer(), await audio.arrayBuffer());
+      assert.deepEqual(JSON.parse(form.get("definition")), {
+        enhancedMode: { enabled: true, model: "MAI-Transcribe-2" },
+        ...(language === "auto" ? {} : { locales: [language] })
+      });
+      return { status: 200, body: JSON.stringify({ combinedPhrases: [{ text: " こんにちは。 " }] }) };
+    }, fakeSignal());
+    assert.equal(text, "こんにちは。");
+  }
+  for (const result of [null, {}, { error: "secret" }, { combinedPhrases: [null] }, { combinedPhrases: [{ text: 123 }] }]) {
+    await assert.rejects(() => transcribeSpeech(encodeSpeechWav(Float32Array.from([0.1])), settings,
+      async () => ({ status: 200, body: JSON.stringify(result) }), fakeSignal()), /応答を解釈/);
+  }
+  assert.equal(await transcribeSpeech(encodeSpeechWav(Float32Array.from([0.1])), settings,
+    async () => ({ status: 200, body: '{"combinedPhrases":[]}' }), fakeSignal()), "");
+  await assert.rejects(() => transcribeSpeech(encodeSpeechWav(Float32Array.from([0.1])), settings,
+    async () => ({ status: 401, body: "azure-key" }), fakeSignal()), (error) => {
+      assert.match(error.message, /401/);
+      assert.doesNotMatch(error.message, /azure-key/);
+      return true;
+    });
+});
+
+test("Azure reports unsupported enhanced-mode endpoints without exposing response contents", async () => {
+  const settings = { ...baseSettings, ...endpointPreset("azure-mai-transcribe"),
+    endpointType: "azure-mai-transcribe", baseUrl: "https://japaneast.api.cognitive.microsoft.com" };
+  const failure = { code: "InvalidRequest", message: "Enhanced mode with model is currently not supported yet." };
+  for (const body of [failure, { error: failure }]) {
+    await assert.rejects(() => transcribeSpeech(encodeSpeechWav(Float32Array.from([0.1])), settings,
+      async () => ({ status: 400, body: JSON.stringify(body) }), fakeSignal()), /対応リージョン/);
+  }
+  for (const body of ['not JSON', JSON.stringify({ code: "InvalidRequest", message: "secret transcript sk-test" })]) {
+    await assert.rejects(() => transcribeSpeech(encodeSpeechWav(Float32Array.from([0.1])), settings,
+      async () => ({ status: 400, body }), fakeSignal()), (error) => {
+        assert.match(error.message, /STT HTTP 400/);
+        assert.doesNotMatch(error.message, /secret|sk-test|not JSON|対応リージョン/);
+        return true;
+      });
+  }
+});

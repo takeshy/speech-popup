@@ -1,5 +1,7 @@
 // Japanese source messages with English translations. User data is never translated.
 export const messages = {
+  "このAzureエンドポイントでは MAI Transcribe が利用できません。対応リージョンのリソースを作成し、そのエンドポイントと API Key を設定してください。": "MAI Transcribe is unavailable at this Azure endpoint. Create a resource in a supported region and set its endpoint and API Key.",
+  "Azure MAI Transcribe の API Key を設定してください。": "Set the Azure MAI Transcribe API Key.",
   "音声コマンド: てん → 、 / まる → 。 / はてな → ? / 改行・エンター → 改行 (無音設定が必要)": "Voice commands: comma / period / question mark / new line or Enter (requires silence detection)",
   "無音後の発話末尾で、てん → 、 / まる → 。 / はてな → ? / 改行・エンター → 改行。0 秒では無効です。": "After silence, trailing comma / period / question mark / new line or Enter become punctuation or a line break. Disabled at 0 seconds.",
   "アプリ内でグローバルホットキーを登録する (Windows のみ)": "Register a global hotkey (Windows only)",

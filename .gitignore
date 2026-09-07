@@ -5,3 +5,6 @@ node_modules/
 *.syso
 .task/
 /build/windows/msix/store.json
+
+# Local Azure diagnostic credential
+/azure_key.txt

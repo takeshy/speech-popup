@@ -253,6 +253,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       openai: "OpenAI",
       custom: t("OpenAI 互換"),
       "whisper-cpp": "whisper.cpp",
+      "azure-mai-transcribe": "Azure MAI Transcribe",
       "gemini-transcribe": "Gemini",
       "vertex-transcribe": "Vertex AI"
     };
@@ -522,7 +523,23 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
 
   // ---- settings -----------------------------------------------------------
 
+  let serviceProfiles = {};
+  let formEndpoint = "";
+
+  function rememberService() {
+    if (!formEndpoint) return;
+    serviceProfiles[formEndpoint] = {
+      baseUrl: cfgFields.speechBaseUrl.value.trim(),
+      apiKey: cfgFields.speechApiKey.value.trim(),
+      model: cfgFields.speechModel.value.trim(),
+      language: cfgFields.speechLanguage.value.trim() || "auto",
+      vertexProjectId: cfgFields.speechVertexProject.value.trim()
+    };
+  }
+
   function fillSettingsForm(view) {
+    serviceProfiles = structuredClone(view.speech.profiles ?? {});
+    formEndpoint = view.speech.endpointType;
     renderSpeechProvider();
     cfgFields.speechProvider.value = view.speech.provider;
     cfgFields.speechEndpoint.value = view.speech.endpointType;
@@ -548,8 +565,10 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   }
 
   function readSettingsForm() {
+    rememberService();
     return {
       speech: {
+        profiles: structuredClone(serviceProfiles),
         provider: cfgFields.speechProvider.value,
         endpointType: cfgFields.speechEndpoint.value,
         baseUrl: cfgFields.speechBaseUrl.value.trim(),
@@ -585,6 +604,9 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     const browser = cfgFields.speechProvider.value === "browser";
     const endpointType = cfgFields.speechEndpoint.value;
     const google = isGoogleEndpoint(endpointType);
+    cfgFields.speechBaseUrl.placeholder = endpointType === "azure-mai-transcribe"
+      ? "https://your-resource.cognitiveservices.azure.com" : "https://api.openai.com/v1";
+    cfgFields.speechApiKey.placeholder = endpointType === "azure-mai-transcribe" ? "Azure Speech API Key" : "sk-...";
     rows.endpoint.hidden = browser;
     rows.baseUrl.hidden = browser || google;
     rows.apiKey.hidden = browser || endpointType === "whisper-cpp" || endpointType === "vertex-transcribe";
@@ -594,11 +616,14 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   }
 
   function applyEndpointPreset() {
-    const preset = endpointPreset(cfgFields.speechEndpoint.value);
+    rememberService();
+    formEndpoint = cfgFields.speechEndpoint.value;
+    const preset = serviceProfiles[formEndpoint] ?? endpointPreset(formEndpoint);
     cfgFields.speechBaseUrl.value = preset.baseUrl;
     cfgFields.speechModel.value = preset.model;
-    // Credentials must never follow a service change.
-    cfgFields.speechApiKey.value = "";
+    cfgFields.speechApiKey.value = preset.apiKey ?? "";
+    cfgFields.speechLanguage.value = preset.language ?? "auto";
+    cfgFields.speechVertexProject.value = preset.vertexProjectId ?? "";
     updateSpeechFieldVisibility();
   }
 

@@ -42,6 +42,8 @@ type HotkeyConfig struct {
 // turned into text. api_key is stored in plain text in config.toml, which is
 // written with 0600 permissions.
 type SpeechConfig struct {
+	Profiles map[string]SpeechProfile
+
 	// Provider is "browser" (the WebView's own SpeechRecognition, live
 	// dictation) or "openai-compatible" (record, then POST the audio).
 	Provider string
@@ -75,6 +77,7 @@ const (
 	EndpointCustom     = "custom"
 	EndpointGemini     = "gemini-transcribe"
 	EndpointVertex     = "vertex-transcribe"
+	EndpointAzureMAI   = "azure-mai-transcribe"
 )
 
 // Providers accepted by SpeechConfig.Provider.
@@ -255,6 +258,11 @@ func stripInlineComment(value string) string {
 }
 
 func (c *Config) apply(section, key, value string) {
+	if strings.HasPrefix(section, "speech.profiles.") {
+		c.Speech.applyProfile(strings.TrimPrefix(section, "speech.profiles."), key, value)
+		return
+	}
+
 	switch section {
 	case "window":
 		switch key {
@@ -321,7 +329,7 @@ func (c *Config) apply(section, key, value string) {
 
 func validEndpointType(value string) bool {
 	switch value {
-	case EndpointOpenAI, EndpointWhisperCPP, EndpointCustom, EndpointGemini, EndpointVertex:
+	case EndpointOpenAI, EndpointWhisperCPP, EndpointCustom, EndpointGemini, EndpointVertex, EndpointAzureMAI:
 		return true
 	default:
 		return false
@@ -357,7 +365,7 @@ func Marshal(c *Config) string {
 	b.WriteString("\n[speech]\n")
 	b.WriteString("# \"browser\" (WebView の音声認識) | \"openai-compatible\" (録音して STT へ POST)\n")
 	fmt.Fprintf(&b, "provider = %s\n", quote(c.Speech.Provider))
-	b.WriteString("# \"openai\" | \"whisper-cpp\" | \"custom\" | \"gemini-transcribe\" | \"vertex-transcribe\"\n")
+	b.WriteString("# \"openai\" | \"whisper-cpp\" | \"custom\" | \"gemini-transcribe\" | \"vertex-transcribe\" | \"azure-mai-transcribe\"\n")
 	fmt.Fprintf(&b, "endpoint_type = %s\n", quote(c.Speech.EndpointType))
 	fmt.Fprintf(&b, "base_url = %s\n", quote(c.Speech.BaseURL))
 	b.WriteString("# 平文で保存される (config.toml は 0600 で書き込まれる)。vertex-transcribe では未使用\n")
@@ -373,6 +381,7 @@ func Marshal(c *Config) string {
 	fmt.Fprintf(&b, "vertex_project_id = %s\n", quote(c.Speech.VertexProjectID))
 	b.WriteString("# ポップアップを開いた直後に録音を開始する\n")
 	fmt.Fprintf(&b, "auto_start = %t\n", c.Speech.AutoStart)
+	c.Speech.marshalProfiles(&b)
 	b.WriteString("\n[clipboard]\n")
 	b.WriteString("# \"wl-copy\" | \"wails\" (既定: Linux=wl-copy, Windows/macOS=wails)\n")
 	fmt.Fprintf(&b, "backend = %s\n", quote(c.Clipboard.Backend))

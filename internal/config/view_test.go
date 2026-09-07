@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -19,7 +20,7 @@ func TestFromViewAcceptsTheShippedDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FromView: %v", err)
 	}
-	if *cfg != *Default() {
+	if !reflect.DeepEqual(cfg, Default()) {
 		t.Errorf("got %+v, want %+v", cfg, Default())
 	}
 	// A fresh install must transcribe without the user entering credentials.
@@ -106,5 +107,65 @@ func TestFromViewBrowserSkipsEndpointChecks(t *testing.T) {
 	v.Speech.BaseURL = ""
 	if _, err := FromView(v); err != nil {
 		t.Fatalf("browser provider: %v", err)
+	}
+}
+
+func TestAzureMAISettingsSaveAndReload(t *testing.T) {
+	v := validView()
+	v.Speech.EndpointType = EndpointAzureMAI
+	v.Speech.BaseURL = " https://resource.cognitiveservices.azure.com/ "
+	v.Speech.APIKey = " azure-test-key "
+	v.Speech.Model = "MAI-Transcribe-2"
+	cfg, err := FromView(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := t.TempDir() + "/config.toml"
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got := ToView(LoadFrom(path)).Speech
+	if got.EndpointType != EndpointAzureMAI || got.BaseURL != "https://resource.cognitiveservices.azure.com/" || got.APIKey != "azure-test-key" || got.Model != "MAI-Transcribe-2" {
+		t.Fatal("Azure settings did not survive save and reload")
+	}
+	for _, field := range []string{"key", "endpoint", "model"} {
+		bad := v
+		switch field {
+		case "key":
+			bad.Speech.APIKey = " "
+		case "endpoint":
+			bad.Speech.BaseURL = ""
+		case "model":
+			bad.Speech.Model = ""
+		}
+		if _, err := FromView(bad); err == nil {
+			t.Errorf("accepted empty %s", field)
+		}
+	}
+}
+
+func TestServiceProfilesRoundTripAndIsolation(t *testing.T) {
+	v := validView()
+	v.Speech.Profiles = map[string]SpeechProfile{
+		EndpointOpenAI:   {BaseURL: "https://openai.example/v1", APIKey: `key\with"quotes#`, Model: "whisper-1", Language: "en"},
+		EndpointAzureMAI: {BaseURL: "https://azure.example", APIKey: "azure-key", Model: "MAI-Transcribe-2", Language: "ja"},
+		EndpointVertex:   {VertexProjectID: "my-project", Language: "auto"},
+	}
+	cfg, err := FromView(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := t.TempDir() + "/config.toml"
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got := ToView(LoadFrom(path))
+	if !reflect.DeepEqual(got.Speech.Profiles, v.Speech.Profiles) {
+		t.Fatal("service profiles changed after reload")
+	}
+	delete(v.Speech.Profiles, EndpointOpenAI)
+	delete(got.Speech.Profiles, EndpointAzureMAI)
+	if len(cfg.Speech.Profiles) != 3 {
+		t.Fatal("views share mutable profile storage")
 	}
 }

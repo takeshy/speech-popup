@@ -15,6 +15,7 @@ Wails 製の常駐型 **音声入力ポップアップ**。ホットキーで呼
 | OpenAI | `endpoint_type = "openai"` | `POST {base_url}/audio/transcriptions`。`whisper-1` / `gpt-4o-transcribe` など |
 | OpenAI 互換 (自前ホスト) | `endpoint_type = "custom"` | 同上。Groq・LM Studio・vLLM など |
 | whisper.cpp server | `endpoint_type = "whisper-cpp"` | `POST {base_url}/inference`。ローカルの平文 HTTP を許可。Model 不要 |
+| Azure MAI Transcribe | `endpoint_type = "azure-mai-transcribe"` | Azure Speech API Key |
 | Gemini API | `endpoint_type = "gemini-transcribe"` | `gemini-3.5-transcribe` に音声を inline で渡す。API Key |
 | Vertex AI | `endpoint_type = "vertex-transcribe"` | `gemini-3.5-transcribe-preview`。Google OAuth (デスクトップクライアント JSON) |
 | ブラウザ音声認識 | `provider = "browser"` | WebView の `SpeechRecognition`。逐次認識だが **WebKitGTK / WebView2 は非対応**。対応環境でのみ選択してください |
@@ -180,6 +181,10 @@ enabled = true
 accelerator = "Ctrl+8"   # A-Z, 0-9, F1-F24 + Ctrl/Shift/Alt/Win   # A-Z, 0-9, F1-F24 + Ctrl/Shift/Alt/Win
 ```
 
+### サービスごとの設定の記憶
+
+**Base URL・API Key・Model・言語・Vertex のプロジェクト ID** はサービスごとに記憶し、切り替えると前回の値を復元します。初めて選ぶサービスには初期値が入り、キーは空欄になります。**保存**すると全サービスの設定が `config.toml` に保存され、アプリ再起動後も保持されます。保存せず閉じた変更は破棄されます。無音秒数・コピーして閉じる合図・自動録音は共通設定です。
+
 ### whisper.cpp をローカルで使う
 
 ```sh
@@ -189,13 +194,36 @@ accelerator = "Ctrl+8"   # A-Z, 0-9, F1-F24 + Ctrl/Shift/Alt/Win   # A-Z, 0-9, F
 
 設定で サービス = `whisper.cpp server` / Base URL = `http://127.0.0.1:8080` にします (Model は不要)。ローカル宛の平文 HTTP は許可されますが、リンクローカルアドレス (169.254.0.0/16, fe80::/10) はメタデータエンドポイント対策で常に拒否されます。
 
+### Azure MAI Transcribe を使う
+
+1. **MAI Transcribe** に対応するリージョンで Azure Speech / Foundry リソースを作成します。[対応リージョン表](https://learn.microsoft.com/ja-jp/azure/ai-services/speech-service/regions)の **LLM speech** タブを確認してください。通常の音声認識に対応するリージョンでも、MAI が使えるとは限りません。
+2. 設定で録音方式を選び、サービスを **Azure MAI Transcribe** にします。
+3. そのリソースのエンドポイントとキーを入力して保存します。
+
+| 設定 | 例・動作 |
+|---|---|
+| Base URL | Southeast Asia のリソースなら `https://southeastasia.api.cognitive.microsoft.com/`、またはリソース固有の `https://your-resource.cognitiveservices.azure.com/` |
+| API Key | 同じリソースのキー。URL だけを変更しても既存リソースのリージョンは変わりません |
+| Model | `MAI-Transcribe-2` (初期値)。`MAI-Transcribe-1.5` も指定できます |
+| 言語 | `auto` で自動検出、`ja` で日本語指定。日本語のコードは `jp` ではありません |
+
+Base URL に API のパスやクエリは付けません。アプリが [MAI Transcribe API](https://learn.microsoft.com/ja-jp/azure/ai-services/speech-service/mai-transcribe) のパスと API バージョン `2025-10-15` を付加します。言語が `auto` なら `locales` を省略し、`ja` なら `locales: ["ja"]` を送信します。
+
+#### 認識できないとき
+
+- **HTTP 400 / モデル指定の拡張モードが未対応**：リソースのリージョンとエンドポイントが MAI に対応しているか確認してください。実測では Japan East のエンドポイントで通常の高速文字起こしは成功しましたが、MAI 指定は拒否されました。Southeast Asia では `MAI-Transcribe-2` で音声の文字起こしを確認しています。
+- **「音声を認識できませんでした」**：サービスが空の認識結果を返した場合に表示します。言語設定が原因とは限りません。声に合わせて音量メーターが動くか確認し、**発話を区切る無音 (秒)** を **0** にして保存してください。5秒程度話し、Ctrl+Space で手動停止すると、自動分割の影響を切り分けられます。
+- **設定変更後の再試行**：Ctrl+R は保持している音声を保存済みの設定で再送します。無音秒数を変更しても、保持済み音声の区切りは変わりません。新しく録音して試す場合は、保持済み音声が不要なら先に Ctrl+D で破棄してください。
+
+手動録音で認識できたら、自動分割を使う場合は **3秒程度**から試してください。0秒では自動分割に加え、音声による記号・改行の変換も無効になります。
+
 ### Vertex AI を使う
 
 1. Google Cloud で「デスクトップアプリ」タイプの OAuth クライアントを作り、JSON をダウンロード
 2. 設定 → サービス = `Vertex AI` → **JSON を選択して Google に接続** → JSON を選択 → ブラウザで認可
 3. プロジェクト ID を入力して保存
 
-リフレッシュトークンは `<config>/speech-popup/credentials/vertex-oauth.json` に 0600 で保存されます。**接続を解除**すると Google 側でも失効させたうえで削除します。
+OAuth 認証情報は設定ディレクトリ内の `credentials/vertex-oauth.json` に 0600 で保存され、サービス切り替え・アプリ再起動後も保持されます。アクセストークンの期限が近づくと、保存したリフレッシュトークンで自動更新します。**接続を解除**すると Google 側への失効リクエストを試み、ローカルの認証情報を削除します。
 
 ## データファイル
 

@@ -40,16 +40,17 @@ type HotkeyView struct {
 }
 
 type SpeechView struct {
-	Provider        string `json:"provider"`
-	EndpointType    string `json:"endpointType"`
-	BaseURL         string `json:"baseUrl"`
-	APIKey          string `json:"apiKey"`
-	Model           string `json:"model"`
-	Language        string `json:"language"`
-	SilenceSeconds  int    `json:"silenceSeconds"`
-	SendPhrase      string `json:"sendPhrase"`
-	VertexProjectID string `json:"vertexProjectId"`
-	AutoStart       bool   `json:"autoStart"`
+	Profiles        map[string]SpeechProfile `json:"profiles,omitempty"`
+	Provider        string                   `json:"provider"`
+	EndpointType    string                   `json:"endpointType"`
+	BaseURL         string                   `json:"baseUrl"`
+	APIKey          string                   `json:"apiKey"`
+	Model           string                   `json:"model"`
+	Language        string                   `json:"language"`
+	SilenceSeconds  int                      `json:"silenceSeconds"`
+	SendPhrase      string                   `json:"sendPhrase"`
+	VertexProjectID string                   `json:"vertexProjectId"`
+	AutoStart       bool                     `json:"autoStart"`
 }
 
 // ToView converts the effective configuration for the frontend.
@@ -58,6 +59,7 @@ func ToView(c *Config) View {
 	v.Window.Width = c.Window.Width
 	v.Window.Height = c.Window.Height
 	v.Window.RestoreFocus = c.Window.RestoreFocus
+	v.Speech.Profiles = cloneProfiles(c.Speech.Profiles)
 	v.Speech.Provider = c.Speech.Provider
 	v.Speech.EndpointType = c.Speech.EndpointType
 	v.Speech.BaseURL = c.Speech.BaseURL
@@ -139,8 +141,9 @@ func speechFromView(v SpeechView) (*SpeechConfig, error) {
 		return nil, fmt.Errorf(i18n.T("provider %q は browser または openai-compatible を指定してください"), v.Provider)
 	}
 	if !validEndpointType(v.EndpointType) {
-		return nil, fmt.Errorf(i18n.T("endpoint_type %q は openai / whisper-cpp / custom / gemini-transcribe / vertex-transcribe のいずれかを指定してください"), v.EndpointType)
+		return nil, fmt.Errorf(i18n.T("endpoint_type %q は openai / whisper-cpp / custom / gemini-transcribe / vertex-transcribe / azure-mai-transcribe のいずれかを指定してください"), v.EndpointType)
 	}
+	s.Profiles = cloneProfiles(v.Profiles)
 	s.EndpointType = v.EndpointType
 	s.BaseURL = strings.TrimSpace(v.BaseURL)
 	s.APIKey = strings.TrimSpace(v.APIKey)
@@ -174,6 +177,9 @@ func speechFromView(v SpeechView) (*SpeechConfig, error) {
 	default:
 		if err := validateSTTBaseURL(s.BaseURL); err != nil {
 			return nil, err
+		}
+		if s.EndpointType == EndpointAzureMAI && s.APIKey == "" {
+			return nil, errors.New(i18n.T("Azure MAI Transcribe の API Key を指定してください"))
 		}
 		if s.EndpointType != EndpointWhisperCPP && s.Model == "" {
 			return nil, errors.New(i18n.T("STT の Model を指定してください"))

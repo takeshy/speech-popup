@@ -7,6 +7,7 @@ export const ENDPOINT_TYPES = [
   "openai",
   "whisper-cpp",
   "custom",
+  "azure-mai-transcribe",
   "gemini-transcribe",
   "vertex-transcribe"
 ];
@@ -20,9 +21,8 @@ export function isGoogleEndpoint(endpointType) {
   return endpointType === "gemini-transcribe" || endpointType === "vertex-transcribe";
 }
 
-// Presets applied when the Settings dialog switches service. Mirrors
-// gemihub-desktop's selectSpeechEndpoint: switching service must never carry a
-// credential or a model name over to a different API.
+// Defaults for services without a saved profile. Credentials belong only to
+// their own service and must never carry over to a different API.
 export function endpointPreset(endpointType) {
   switch (endpointType) {
     case "gemini-transcribe":
@@ -39,6 +39,8 @@ export function endpointPreset(endpointType) {
       };
     case "whisper-cpp":
       return { baseUrl: "http://127.0.0.1:8080", model: "", language: "auto" };
+    case "azure-mai-transcribe":
+      return { baseUrl: "", model: "MAI-Transcribe-2", language: "auto" };
     case "custom":
       return { baseUrl: "", model: "", language: "auto" };
     default:
@@ -63,6 +65,11 @@ export function transcriptionURL(baseUrl, endpointType = "openai", vertexProject
     url.password || url.search || url.hash
   ) {
     throw new Error(t("Base URL には認証情報・クエリ・フラグメントを含まない HTTP(S) URL を指定してください。"));
+  }
+  if (endpointType === "azure-mai-transcribe") {
+    url.pathname = url.pathname.replace(/\/+$/, "") + "/speechtotext/transcriptions:transcribe";
+    url.searchParams.set("api-version", "2025-10-15");
+    return url.toString();
   }
   url.pathname = url.pathname.replace(/\/+$/, "") +
     (endpointType === "whisper-cpp" ? "/inference" : "/audio/transcriptions");
@@ -194,6 +201,15 @@ export async function recordingsToWav(clips, signal) {
 // opened, and returns the endpoint URL the request will use.
 export function validateSpeechSettings(settings) {
   const url = transcriptionURL(settings.baseUrl, settings.endpointType, settings.vertexProjectId ?? "");
+  if (settings.endpointType === "azure-mai-transcribe" && !settings.apiKey.trim()) {
+    throw new Error(t("Azure MAI Transcribe の API Key を設定してください。"));
+  }
+  if (settings.endpointType === "azure-mai-transcribe") {
+    const language = settings.language.trim();
+    if (language && language.toLowerCase() !== "auto" && !/^[a-z]{2,3}(?:-[a-z0-9]+)*$/i.test(language)) {
+      throw new Error(t("言語は auto か BCP-47 (ja / en-US など) で指定してください。"));
+    }
+  }
   if (isGoogleEndpoint(settings.endpointType)) {
     if (settings.endpointType === "gemini-transcribe" && !settings.apiKey.trim()) {
       throw new Error(t("Gemini API の API Key を設定してください。"));
@@ -246,6 +262,7 @@ export async function transcribeSpeech(audio, settings, transport, signal) {
   signal.throwIfAborted();
   const url = validateSpeechSettings(settings);
   const google = isGoogleEndpoint(settings.endpointType);
+  const azure = settings.endpointType === "azure-mai-transcribe";
   const native = settings.endpointType === "whisper-cpp";
   if (!audio.size) throw new Error(t("録音が空です。"));
   let headers;
@@ -278,11 +295,15 @@ export async function transcribeSpeech(audio, settings, transport, signal) {
     bodyBase64 = bytesToBase64(new TextEncoder().encode(body));
   } else {
     const form = new FormData();
-    form.append("file", audio, "recording.wav");
-    if (!native) form.append("model", settings.model.trim());
+    form.append(azure ? "audio" : "file", audio, "recording.wav");
+    if (!native && !azure) form.append("model", settings.model.trim());
     if (native) form.append("response_format", "json");
     const language = settings.language.trim();
-    if (native) {
+    if (azure) {
+      const definition = { enhancedMode: { enabled: true, model: settings.model.trim() } };
+      if (language && language.toLowerCase() !== "auto") definition.locales = [language];
+      form.append("definition", JSON.stringify(definition));
+    } else if (native) {
       form.append("language", language && language.toLowerCase() !== "auto" ? language : "auto");
     } else if (language && language.toLowerCase() !== "auto") {
       form.append("language", language);
@@ -291,7 +312,8 @@ export async function transcribeSpeech(audio, settings, transport, signal) {
     const request = new Request(url, { method: "POST", body: form });
     bodyBase64 = bytesToBase64(new Uint8Array(await request.arrayBuffer()));
     headers = { "Content-Type": request.headers.get("content-type") };
-    if (settings.apiKey.trim()) headers.Authorization = `Bearer ${settings.apiKey.trim()}`;
+    if (azure) headers["Ocp-Apim-Subscription-Key"] = settings.apiKey.trim();
+    else if (settings.apiKey.trim()) headers.Authorization = `Bearer ${settings.apiKey.trim()}`;
   }
   signal.throwIfAborted();
   const response = await transport({ url, method: "POST", headers, bodyBase64 });
@@ -299,6 +321,17 @@ export async function transcribeSpeech(audio, settings, transport, signal) {
   // Never echo server error bodies, which may contain credentials or the
   // recorded text itself.
   if (response.status < 200 || response.status >= 300) {
+    if (azure && response.status === 400) {
+      // Azure uses a top-level code/message for unavailable enhanced mode.
+      // Match the known response but never expose arbitrary response content.
+      let error;
+      try { error = JSON.parse(response.body); } catch { /* use the generic error */ }
+      error = error?.error ?? error;
+      if (error?.code === "InvalidRequest" &&
+          error.message === "Enhanced mode with model is currently not supported yet.") {
+        throw new Error(`STT HTTP 400: ${t("このAzureエンドポイントでは MAI Transcribe が利用できません。対応リージョンのリソースを作成し、そのエンドポイントと API Key を設定してください。")}`);
+      }
+    }
     const reason = response.status === 401 || response.status === 403
       ? t("API Key とサーバーの認証設定を確認してください。")
       : t("Base URL・Model・サーバーの対応形式を確認してください。");
@@ -311,6 +344,14 @@ export async function transcribeSpeech(audio, settings, transport, signal) {
     throw new Error(t("STT の応答が JSON ではありません。"));
   }
   if (google) return geminiTranscript(result);
+  if (azure) {
+    if (!result || typeof result !== "object" || "error" in result ||
+        !Array.isArray(result.combinedPhrases) ||
+        result.combinedPhrases.some((phrase) => !phrase || typeof phrase.text !== "string")) {
+      throw new Error(t("STT の応答を解釈できません。"));
+    }
+    return result.combinedPhrases.map((phrase) => phrase.text.trim()).filter(Boolean).join(" ");
+  }
   if (!result || typeof result !== "object" || typeof result.text !== "string") {
     throw new Error(t("STT の応答に text フィールドがありません。"));
   }

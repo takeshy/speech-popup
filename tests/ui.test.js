@@ -122,7 +122,7 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null }
     t: translate, getLanguage, localizeDOM() {},
     createAudioMeter: () => ({ attach: async () => true }),
     browserSpeechSupported: () => false,
-    URL, setTimeout, clearTimeout, clearInterval,
+    URL, structuredClone, setTimeout, clearTimeout, clearInterval,
     setInterval(...args) { const timer = setInterval(...args); timers.add(timer); return timer; }
   });
   t.after(() => {
@@ -259,4 +259,71 @@ test("canceling the Vertex JSON picker does not start OAuth", async (t) => {
   ui.element("vertex-connect").fire("click");
   await until(() => ui.element("settings-status").textContent === "");
   assert.deepEqual(ui.vertexConnections, []);
+});
+
+test("Azure MAI endpoint and key persist when Settings is reopened", async (t) => {
+  const ui = await setup(t);
+  ui.element("menu-settings").fire("click");
+  await until(() => ui.element("cfg-speech-api-key").value === "invalid");
+  ui.element("cfg-speech-endpoint").value = "azure-mai-transcribe";
+  ui.element("cfg-speech-endpoint").fire("change");
+  assert.equal(ui.element("cfg-speech-api-key").value, "");
+  assert.equal(ui.element("cfg-speech-model").value, "MAI-Transcribe-2");
+  for (const row of ["row-base-url", "row-api-key", "row-model"]) assert.equal(ui.element(row).hidden, false);
+  ui.element("cfg-speech-base-url").value = "https://resource.cognitiveservices.azure.com";
+  ui.element("cfg-speech-api-key").value = "azure-test-key";
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").textContent === "保存しました。");
+  ui.element("settings-close").fire("click");
+  ui.element("cfg-speech-api-key").value = "";
+  ui.element("menu-settings").fire("click");
+  await until(() => ui.element("cfg-speech-api-key").value === "azure-test-key");
+  assert.equal(ui.element("cfg-speech-endpoint").value, "azure-mai-transcribe");
+  assert.equal(ui.element("cfg-speech-base-url").value, "https://resource.cognitiveservices.azure.com");
+  assert.equal(ui.element("speech-provider").textContent, "書き起こし: Azure MAI Transcribe");
+});
+
+test("service profiles restore edits, isolate keys, and survive saving and reopening", async (t) => {
+  const ui = await setup(t);
+  ui.element("menu-settings").fire("click");
+  await until(() => ui.element("cfg-speech-api-key").value === "invalid");
+  const switchTo = (name) => {
+    ui.element("cfg-speech-endpoint").value = name;
+    ui.element("cfg-speech-endpoint").fire("change");
+  };
+  ui.element("cfg-speech-language").value = "en-US";
+  switchTo("azure-mai-transcribe");
+  assert.equal(ui.element("cfg-speech-api-key").value, "");
+  ui.element("cfg-speech-base-url").value = "https://azure.example.com";
+  ui.element("cfg-speech-api-key").value = "azure-key";
+  ui.element("cfg-speech-model").value = "MAI-Transcribe-1.5";
+  ui.element("cfg-speech-language").value = "ja";
+  switchTo("vertex-transcribe");
+  assert.equal(ui.element("cfg-speech-api-key").value, "");
+  ui.element("cfg-speech-vertex-project").value = "my-project";
+  switchTo("openai");
+  assert.equal(ui.element("cfg-speech-api-key").value, "invalid");
+  assert.equal(ui.element("cfg-speech-language").value, "en-US");
+  assert.equal(ui.element("cfg-speech-vertex-project").value, "");
+  switchTo("azure-mai-transcribe");
+  assert.equal(ui.element("cfg-speech-api-key").value, "azure-key");
+  assert.equal(ui.element("cfg-speech-model").value, "MAI-Transcribe-1.5");
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").textContent === "保存しました。");
+  ui.element("settings-close").fire("click");
+  ui.element("menu-settings").fire("click");
+  await new Promise((resolve) => setImmediate(resolve));
+  switchTo("vertex-transcribe");
+  assert.equal(ui.element("cfg-speech-vertex-project").value, "my-project");
+  switchTo("openai");
+  assert.equal(ui.element("cfg-speech-api-key").value, "invalid");
+  ui.element("cfg-speech-api-key").value = "unsaved";
+  ui.element("settings-close").fire("click");
+  ui.element("menu-settings").fire("click");
+  await new Promise((resolve) => setImmediate(resolve));
+  switchTo("openai");
+  assert.equal(ui.element("cfg-speech-api-key").value, "invalid");
+  switchTo("azure-mai-transcribe");
+  assert.equal(ui.element("cfg-speech-base-url").value, "https://azure.example.com");
+  assert.equal(ui.element("cfg-speech-language").value, "ja");
 });

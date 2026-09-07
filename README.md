@@ -18,6 +18,7 @@ This project adapts the resident popup and clipboard workflow from [skk-popup](h
 | OpenAI | `endpoint_type = "openai"` | Your API key |
 | OpenAI compatible / self-hosted | `endpoint_type = "custom"` | As required by your server |
 | whisper.cpp server | `endpoint_type = "whisper-cpp"` | Local server; no model field required |
+| Azure MAI Transcribe | `endpoint_type = "azure-mai-transcribe"` | Azure Speech API Key |
 | Gemini API | `endpoint_type = "gemini-transcribe"` | Your API key |
 | Vertex AI | `endpoint_type = "vertex-transcribe"` | Google OAuth desktop client and Cloud project |
 
@@ -125,6 +126,10 @@ enabled = true # Windows only; false by default elsewhere
 accelerator = "Ctrl+8"
 ```
 
+### Remembered service settings
+
+Settings remembers each service's **Base URL, API Key, Model, language, and Vertex project ID**. Switching services restores its previous values; a service used for the first time starts with its defaults and an empty key. Choose **Save** to persist all service profiles in `config.toml` across app restarts. Closing without saving discards edits. Silence duration, send phrases, and automatic recording remain shared settings.
+
 ### Local whisper.cpp
 
 ```sh
@@ -133,13 +138,36 @@ accelerator = "Ctrl+8"
 
 Choose whisper.cpp server and set Base URL to `http://127.0.0.1:8080`. Loopback/private HTTP is allowed; direct link-local destinations are blocked by the transport.
 
+### Azure MAI Transcribe
+
+1. Create an Azure Speech / Foundry resource in a region that supports **MAI Transcribe**. Check the **LLM speech** tab in the [region table](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/regions); ordinary speech-to-text support alone does not imply MAI support.
+2. In Settings, select the recorded speech provider and **Azure MAI Transcribe**.
+3. Enter the endpoint and key belonging to that resource, then save:
+
+| Setting | Example / behavior |
+|---|---|
+| Base URL | `https://southeastasia.api.cognitive.microsoft.com/` for a Southeast Asia resource, or the resource's `https://your-resource.cognitiveservices.azure.com/` endpoint |
+| API Key | The key for the same resource; changing only the URL does not move an existing resource |
+| Model | `MAI-Transcribe-2` (default); `MAI-Transcribe-1.5` can also be specified |
+| Language | `auto` for automatic detection, or `ja` for Japanese (`jp` is not the Japanese language code) |
+
+Enter the base endpoint without an API path or query string. The app adds the [MAI Transcribe API](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe) path and API version `2025-10-15`. Language `auto` omits `locales`; `ja` sends `locales: ["ja"]`.
+
+#### If recognition fails
+
+- **HTTP 400 / enhanced mode with model is not supported:** check MAI support for the resource's region and endpoint. In our checks, the Japan East endpoint accepted ordinary fast transcription but rejected MAI; Southeast Asia successfully transcribed speech with `MAI-Transcribe-2`.
+- **No speech was recognized:** the service returned an empty transcript. This does not by itself mean the language setting is wrong. Check that the microphone meter moves while speaking. Set **Pause between utterances (seconds)** to **0**, save, record about five seconds of speech, then stop manually with Ctrl+Space to test without automatic segmentation.
+- **Retrying after a settings change:** Ctrl+R resends the retained audio with the saved settings. Changing the silence duration does not re-segment retained audio. To test a fresh recording, discard the retained audio with Ctrl+D first if you no longer need it.
+
+Once manual recording works, try a pause of about **3 seconds** if you want automatic segmentation. A value of 0 disables spoken punctuation/line-break conversion as well as automatic segmentation.
+
 ### Vertex AI
 
 1. Create a Google Cloud OAuth client of type **Desktop app** and download its JSON.
 2. Select Vertex AI in Settings, choose **Select JSON and connect to Google**, select the JSON and authorize in the browser.
 3. Enter your Cloud project ID and save.
 
-OAuth credentials are stored under the config directory in `credentials/vertex-oauth.json`. Disconnect attempts token revocation and removes the local credentials.
+OAuth credentials are stored under the config directory in `credentials/vertex-oauth.json` and survive service switches and app restarts. The app refreshes expiring access tokens using the saved refresh token. Disconnect attempts token revocation and removes the local credentials.
 
 ## Local data and privacy
 

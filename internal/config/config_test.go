@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 )
@@ -95,7 +96,7 @@ func TestMarshalRoundTrips(t *testing.T) {
 		}
 	}
 	got := LoadFrom(path)
-	if *got != *cfg {
+	if !reflect.DeepEqual(got, cfg) {
 		t.Errorf("round trip changed the config:\n got %+v\nwant %+v", got, cfg)
 	}
 }
