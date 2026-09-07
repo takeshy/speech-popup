@@ -1,0 +1,26 @@
+version: '3'
+
+includes:
+  common: ../Taskfile.yml
+
+tasks:
+  # -H windowsgui keeps autostart from flashing a console window. The CLI
+  # subcommands stay usable because main() calls AttachConsole first; see
+  # console_windows.go.
+  build:
+    deps: [common:tidy, common:frontend]
+    cmds:
+      - go build {{.BUILD_FLAGS}} -o {{.BIN_DIR}}/{{.APP_NAME}}.exe
+    vars:
+      ARCH: '{{.ARCH | default ARCH}}'
+      BUILD_FLAGS: '-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui"'
+    env:
+      GOOS: windows
+      GOARCH: '{{.ARCH}}'
+      CGO_ENABLED: 0
+  package:
+    cmds:
+      - task: build
+  run:
+    cmds:
+      - '{{.BIN_DIR}}/{{.APP_NAME}}.exe'

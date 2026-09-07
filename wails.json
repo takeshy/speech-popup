@@ -1,0 +1,12 @@
+{
+  "info": {
+    "companyName": "takeshy",
+    "productName": "speech-popup",
+    "productIdentifier": "takeshy.speech-popup",
+    "description": "Speech input popup window",
+    "copyright": "Copyright takeshy",
+    "comments": "Speech input popup window",
+    "version": "0.1.0"
+  },
+  "fileAssociations": []
+}

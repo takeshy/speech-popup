@@ -1,0 +1,26 @@
+version: '3'
+
+includes:
+  common: ./build/Taskfile.yml
+  windows: ./build/windows/Taskfile.yml
+  darwin: ./build/darwin/Taskfile.yml
+  linux: ./build/linux/Taskfile.yml
+
+vars:
+  APP_NAME: speech-popup
+  BIN_DIR: bin
+
+tasks:
+  build:
+    cmds:
+      - task: '{{OS}}:build'
+  package:
+    cmds:
+      - task: '{{OS}}:package'
+  run:
+    cmds:
+      - task: '{{OS}}:run'
+  test:
+    cmds:
+      - go test ./...
+      - node --test tests/*.test.js

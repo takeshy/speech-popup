@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>speech-popup</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <header>
+    <h1>Speech Input</h1>
+    <div class="header-right">
+      <div id="mode" class="mode" role="button" tabindex="0" title="クリックで録音開始 / 停止">待機中</div>
+      <button id="menu-button" class="menu-button" type="button" title="メニュー" aria-haspopup="menu" aria-expanded="false">⋮</button>
+    </div>
+  </header>
+  <div id="menu" class="menu" role="menu" hidden>
+    <p id="menu-version" class="menu-version">speech-popup</p>
+    <button id="menu-settings" class="menu-row" type="button" role="menuitem">設定</button>
+    <button id="menu-help" class="menu-row" type="button" role="menuitem">ヘルプ (キー操作)</button>
+  </div>
+  <textarea id="input" autocomplete="off" spellcheck="false" placeholder="話した内容がここに入ります (Ctrl+Space で録音)" autofocus></textarea>
+  <div id="activity" class="activity" data-active="false">
+    <div id="meter" class="meter" role="img" aria-label="入力レベル"></div>
+    <div class="activity-copy">
+      <strong id="activity-title" role="status"></strong>
+      <small id="activity-hint"></small>
+    </div>
+    <time id="activity-elapsed" class="activity-elapsed">0:00</time>
+  </div>
+  <div class="error-row">
+    <p id="error" class="error" aria-live="polite"></p>
+    <button id="error-settings" class="link-button" type="button" hidden>設定を開く</button>
+  </div>
+  <div class="footer">
+    <p id="status" class="status"></p>
+    <div class="actions">
+      <button id="retry" type="button" hidden title="保持している録音をもう一度認識する (Ctrl+R)">再認識</button>
+      <button id="record" class="primary" type="button">● 録音</button>
+      <button id="copy" type="button">Copy</button>
+      <button id="close" type="button">Close</button>
+    </div>
+  </div>
+  <div id="help-overlay" class="overlay" data-open="false" tabindex="-1">
+    <div class="overlay-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
+      <div class="overlay-head">
+        <h2 id="help-title">キー操作</h2>
+        <button id="help-close" type="button">閉じる</button>
+      </div>
+      <pre id="help-body" class="help-body"></pre>
+    </div>
+  </div>
+  <div id="settings-overlay" class="overlay" data-open="false" tabindex="-1">
+    <form id="settings-form" class="overlay-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="overlay-head">
+        <h2 id="settings-title">設定</h2>
+        <div class="overlay-actions">
+          <button id="settings-close" type="button">閉じる</button>
+          <button id="settings-save" class="primary" type="submit">保存</button>
+        </div>
+      </div>
+      <p id="settings-status" class="settings-status" aria-live="polite"></p>
+      <div class="settings-body">
+        <h3>音声入力</h3>
+        <div class="field-row">
+          <label>方式
+            <select id="cfg-speech-provider">
+              <option value="openai-compatible">録音して送信 (OpenAI 互換 / Gemini / Vertex / whisper.cpp)</option>
+              <option value="browser">ブラウザ音声認識 (WebView が対応している場合のみ)</option>
+            </select>
+          </label>
+        </div>
+        <div class="field-row" id="row-endpoint">
+          <label>サービス
+            <select id="cfg-speech-endpoint">
+              <option value="openai">OpenAI (/audio/transcriptions)</option>
+              <option value="whisper-cpp">whisper.cpp server (/inference)</option>
+              <option value="custom">OpenAI 互換 (自前ホスト)</option>
+              <option value="gemini-transcribe">Gemini API</option>
+              <option value="vertex-transcribe">Vertex AI (Google ログイン)</option>
+            </select>
+          </label>
+        </div>
+        <div class="field-row" id="row-base-url">
+          <label class="wide">Base URL <input id="cfg-speech-base-url" type="text" placeholder="https://api.openai.com/v1" spellcheck="false"></label>
+        </div>
+        <div class="field-row" id="row-api-key">
+          <label class="wide">API Key <input id="cfg-speech-api-key" type="password" placeholder="sk-..." spellcheck="false" autocomplete="off"></label>
+        </div>
+        <div class="field-row" id="row-model">
+          <label class="wide">Model <input id="cfg-speech-model" type="text" placeholder="whisper-1" spellcheck="false"></label>
+        </div>
+        <div class="field-row" id="row-vertex">
+          <label class="wide">Google Cloud プロジェクト ID <input id="cfg-speech-vertex-project" type="text" placeholder="my-project" spellcheck="false"></label>
+          <span id="vertex-status" class="settings-note"></span>
+          <button id="vertex-connect" type="button">Google に接続</button>
+          <button id="vertex-disconnect" type="button">接続を解除</button>
+        </div>
+        <div class="field-row">
+          <label>言語 <input id="cfg-speech-language" type="text" placeholder="auto" spellcheck="false"></label>
+          <label>無音で自動停止 (秒) <input id="cfg-speech-silence" type="number" min="0" max="10" step="1"></label>
+          <label class="check"><input id="cfg-speech-auto-start" type="checkbox"> ポップアップを開いたら自動で録音を開始する</label>
+        </div>
+        <div class="field-row">
+          <label class="wide">コピーして閉じる合図の言葉 (カンマ区切り) <input id="cfg-speech-send-phrase" type="text" placeholder="over, オーバー" spellcheck="false"></label>
+        </div>
+        <p class="settings-note">API Key は config.toml に平文で保存されます (ファイルは 0600 で書き込まれます)。</p>
+        <h3>ウィンドウ</h3>
+        <div class="field-row">
+          <label>幅 <input id="cfg-window-width" type="number" min="200" max="4000" step="10"></label>
+          <label>高さ <input id="cfg-window-height" type="number" min="120" max="4000" step="10"></label>
+          <label class="check"><input id="cfg-restore-focus" type="checkbox"> 閉じたあと直前のウィンドウへフォーカスを戻す</label>
+        </div>
+        <h3>クリップボード / 貼り付け</h3>
+        <div class="field-row">
+          <label>backend
+            <select id="cfg-clipboard-backend">
+              <option value="wl-copy">wl-copy (Linux/Wayland)</option>
+              <option value="wails">wails (Windows/macOS)</option>
+            </select>
+          </label>
+          <label class="check"><input id="cfg-auto-paste" type="checkbox"> コピー後に自動で貼り付ける</label>
+          <label>待ち時間 (ms) <input id="cfg-auto-paste-delay" type="number" min="0" max="10000" step="10"></label>
+          <label>貼り付けキー
+            <select id="cfg-paste-key">
+              <option value="ctrl+shift+v">Ctrl+Shift+V (ターミナル向け)</option>
+              <option value="ctrl+v">Ctrl+V</option>
+            </select>
+          </label>
+        </div>
+        <h3>ショートカット</h3>
+        <div class="field-row">
+          <label class="check"><input id="cfg-hotkey-enabled" type="checkbox"> アプリ内でグローバルホットキーを登録する (Windows のみ)</label>
+          <label>キー <input id="cfg-hotkey-accelerator" type="text" placeholder="Ctrl+8" spellcheck="false"></label>
+        </div>
+        <p id="hotkey-note" class="settings-note"></p>
+        <div id="hotkey-bind-row" class="field-row" hidden>
+          <code id="hotkey-bind-line" class="bind-line"></code>
+          <button id="hotkey-copy-bind" type="button">bind 行をコピー</button>
+        </div>
+        <h3>情報</h3>
+        <pre id="settings-info" class="settings-info"></pre>
+      </div>
+    </form>
+  </div>
+  <script type="module" src="/src/wails_bridge.js"></script>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

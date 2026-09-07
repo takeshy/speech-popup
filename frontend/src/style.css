@@ -1,0 +1,500 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.4;
+}
+
+/* Author display rules (.menu, .field-row) must not override the hidden
+   attribute, otherwise the ⋮ menu shows permanently. */
+[hidden] {
+  display: none !important;
+}
+
+html {
+  height: 100%;
+}
+
+/* The window is a fixed size, so the popup is laid out as a column that fills
+   it exactly: the text area absorbs the slack and everything else keeps its
+   natural height. Without this a wrapped error message pushes the footer
+   buttons out of the window and the whole body scrolls. */
+body {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin: 0;
+  padding: 14px;
+  overflow: hidden;
+  color: #172033;
+  background: #f7f9fc;
+}
+
+header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  --wails-draggable: drag;
+  cursor: move;
+  user-select: none;
+}
+
+h1 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.mode {
+  --wails-draggable: no-drag;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: #526174;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.mode[data-recording="true"] {
+  background: #b91c1c;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.menu-button {
+  --wails-draggable: no-drag;
+  min-height: 0;
+  padding: 1px 7px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.menu-button:hover,
+.menu-button[aria-expanded="true"] {
+  border-color: #c6d0dd;
+  background: #fff;
+}
+
+.menu {
+  position: absolute;
+  top: 40px;
+  right: 14px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  border: 1px solid #c6d0dd;
+  border-radius: 8px;
+  padding: 6px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.22);
+}
+
+.menu-version {
+  margin: 2px 6px 6px;
+  color: #526174;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.menu-row {
+  min-height: 30px;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+  font-weight: 500;
+}
+
+.menu-row:hover,
+.menu-row:focus-visible {
+  background: rgba(15, 111, 173, 0.12);
+}
+
+textarea {
+  box-sizing: border-box;
+  /* Shrinks first when the error row grows; min-height:0 lets it actually
+     shrink inside the flex column. */
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  border: 1px solid #c6d0dd;
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #fff;
+  color: #172033;
+  font: 17px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.activity {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  visibility: hidden;
+}
+
+.activity[data-active="true"] {
+  visibility: visible;
+  border-color: rgba(185, 28, 28, 0.26);
+  background: rgba(185, 28, 28, 0.06);
+}
+
+.meter {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 32px;
+  flex: 0 0 auto;
+}
+
+.meter span {
+  width: 3px;
+  height: 3px;
+  border-radius: 2px;
+  background: #b91c1c;
+  transition: height 60ms linear;
+}
+
+.activity-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.activity-copy strong {
+  font-size: 13px;
+}
+
+.activity-copy small,
+.activity-elapsed {
+  color: #526174;
+  font-size: 12px;
+}
+
+.activity-elapsed {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.error-row {
+  /* Capped so a long message scrolls here rather than growing the page. */
+  flex: 0 1 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 18px;
+  max-height: 4.6em;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+
+.error {
+  flex: 1 1 auto;
+  min-height: 18px;
+  margin: 0;
+  color: #b91c1c;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.link-button {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 2px 8px;
+  border-color: #b91c1c;
+  background: transparent;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.status {
+  /* The hint yields to the buttons rather than wrapping and pushing them out
+     of the window. */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  color: #526174;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  min-height: 32px;
+  border: 1px solid #c6d0dd;
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: #fff;
+  color: #172033;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button.primary {
+  border-color: #0f6fad;
+  background: #0f6fad;
+  color: #fff;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: none;
+  align-items: stretch;
+  justify-content: center;
+  padding: 14px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.overlay[data-open="true"] {
+  display: flex;
+}
+
+.overlay-dialog {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 100%;
+  margin: 0;
+  border: 1px solid #c6d0dd;
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.3);
+}
+
+.overlay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.overlay-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.overlay-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.help-body,
+.settings-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.help-body {
+  margin: 0;
+  font: 13px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.settings-body h3 {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  color: #526174;
+}
+
+.settings-body h3:first-child {
+  margin-top: 0;
+}
+
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.field-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-row label.wide {
+  flex: 1 1 100%;
+}
+
+.field-row label.wide input {
+  flex: 1 1 auto;
+}
+
+.field-row input[type="number"] {
+  width: 84px;
+}
+
+.field-row input[type="text"],
+.field-row input[type="password"],
+.field-row input[type="number"],
+.field-row select {
+  box-sizing: border-box;
+  min-height: 30px;
+  border: 1px solid #c6d0dd;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: #fff;
+  color: #172033;
+  font: 13px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.bind-line {
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  font-size: 12px;
+}
+
+.settings-note {
+  margin: 8px 0 0;
+  color: #526174;
+  font-size: 12px;
+}
+
+.settings-status {
+  min-height: 18px;
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: #166534;
+}
+
+.settings-status[data-error="true"] {
+  color: #b91c1c;
+}
+
+.settings-info {
+  margin: 0;
+  font: 12px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    color: #e8edf5;
+    background: #111827;
+  }
+
+  textarea,
+  button,
+  .menu,
+  .overlay-dialog,
+  .field-row input[type="text"],
+  .field-row input[type="password"],
+  .field-row input[type="number"],
+  .field-row select {
+    border-color: #344155;
+    background: #172033;
+    color: #e8edf5;
+  }
+
+  .menu-button,
+  .menu-row {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .menu-button:hover,
+  .menu-button[aria-expanded="true"] {
+    border-color: #344155;
+    background: #172033;
+  }
+
+  .menu-row:hover,
+  .menu-row:focus-visible {
+    background: rgba(47, 154, 224, 0.18);
+  }
+
+  .menu-version,
+  .settings-note,
+  .settings-body h3,
+  .status,
+  .activity-copy small,
+  .activity-elapsed {
+    color: #aeb8c7;
+  }
+
+  .activity[data-active="true"] {
+    border-color: rgba(248, 113, 113, 0.34);
+    background: rgba(127, 29, 29, 0.28);
+  }
+
+  .meter span {
+    background: #f87171;
+  }
+
+  .error,
+  .settings-status[data-error="true"] {
+    color: #fca5a5;
+  }
+
+  .link-button {
+    border-color: #fca5a5;
+    background: transparent;
+    color: #fca5a5;
+  }
+
+  .bind-line {
+    background: #0f172a;
+  }
+
+  .settings-status {
+    color: #86efac;
+  }
+
+  button.primary {
+    border-color: #2f9ae0;
+    background: #146fac;
+    color: #fff;
+  }
+}

@@ -1,0 +1,19 @@
+version: '3'
+
+tasks:
+  frontend:
+    dir: frontend
+    sources:
+      - index.html
+      - src/**/*
+      - package.json
+      - build.mjs
+    generates:
+      - dist/**/*
+    cmds:
+      - npm run build
+
+  tidy:
+    internal: true
+    cmds:
+      - go mod tidy
