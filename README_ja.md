@@ -1,6 +1,6 @@
 # speech-popup
 
-[English](README.md) · [プライバシー](PRIVACY_ja.md) · [Microsoft Store 提出手順](docs/MICROSOFT_STORE.md)
+[English](README.md) · [プライバシー](PRIVACY_ja.md)
 
 Wails 製の常駐型 **音声入力ポップアップ**。ホットキーで呼び出して話すと、認識結果がクリップボードへ入り、直前のウィンドウへ貼り付けられます。Linux/Wayland (Hyprland)・Windows・macOS 対応。
 
@@ -46,6 +46,8 @@ HTTP リクエストは WebView からではなく Go 側のプロキシ (`Speec
 | Linux + Wayland (Hyprland 推奨) | `wl-clipboard` (`wl-copy`)、WebKit2GTK 4.1、任意で `wtype` (自動貼り付け時)、マイク (PipeWire/PulseAudio) |
 | Windows 10 以降 | 追加要件なし (ホットキーはアプリ内登録) |
 | macOS | **マイク**権限と、`osascript` が使う **Accessibility / Automation** 権限 |
+
+Windows版は [Microsoft Storeからインストール](https://apps.microsoft.com/detail/9NVCCG9K20FV?hl=ja-jp&gl=JP&ocid=pdpshare) できます。
 
 ## 使い方
 
@@ -280,17 +282,6 @@ Linux ビルドは Wails v3 の `gtk3` タグを使い、WebKit2GTK 4.1 環境�
 go test ./...              # 設定・履歴ストア・HTTP プロキシ・Vertex ガード
 node --test tests/*.test.js  # 認識リクエストの組み立て・WAV 生成・無音検出
 ```
-
-## Microsoft Store 用パッケージ
-
-Windows SDK と Wails CLI を使い、x64 / ARM64 の MSIX を生成できます。Partner Center でアプリ名を予約し、製品 ID を `build/windows/msix/store.json` または環境変数に設定してください。
-
-```powershell
-wails3 task windows:msix ARCH=amd64
-wails3 task windows:msix ARCH=arm64
-```
-
-[提出手順・審査用メモ](docs/MICROSOFT_STORE.md) を参照してください。GitHub Actions の **Windows packages** ワークフローは両アーキテクチャの EXE を生成します。リポジトリ変数 `MSIX_PACKAGE_NAME` と `MSIX_PUBLISHER` の両方が設定されていれば MSIX も生成し、未設定なら MSIX の生成だけをスキップします。申請・公開は自動では行いません。
 
 ### 挿入位置と句読点
 

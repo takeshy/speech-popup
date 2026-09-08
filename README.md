@@ -1,6 +1,6 @@
 # speech-popup
 
-[日本語](README_ja.md) · [Privacy](PRIVACY.md) · [Microsoft Store submission](docs/MICROSOFT_STORE.md)
+[日本語](README_ja.md) · [Privacy](PRIVACY.md)
 
 A resident voice dictation popup built with Wails. Press a hotkey, speak, edit the transcript, and press Enter to copy it and paste into the previous window.
 
@@ -44,6 +44,8 @@ Recording-based services receive 16 kHz mono WAV audio through the Go backend, a
 - **Windows 10/11:** microphone and Microsoft Edge WebView2 Runtime. In-app global hotkeys are supported.
 - **Linux/Wayland:** WebKit2GTK 4.1, `wl-copy`, a microphone, and optionally `wtype` for automatic paste. Hyprland is the primary supported compositor.
 - **macOS:** microphone permission; focus restoration and paste use `osascript` and require the corresponding Accessibility/Automation permissions.
+
+The Windows version is available from the [Microsoft Store](https://apps.microsoft.com/detail/9NVCCG9K20FV).
 
 ## Everyday use
 
@@ -233,7 +235,7 @@ npm test
 go test ./... # Linux: add -tags gtk3 when using the GTK3 dependencies
 ```
 
-Windows builds generate icon/version resources before compiling. For Store-ready MSIX packages (x64 and ARM64), configure the reserved identity and run `wails3 task windows:msix ARCH=amd64` on Windows with the Windows SDK. See [the submission guide](docs/MICROSOFT_STORE.md). The **Windows packages** GitHub Actions workflow builds EXEs for both architectures. If both repository variables `MSIX_PACKAGE_NAME` and `MSIX_PUBLISHER` are set, it also creates MSIX packages; otherwise it skips MSIX packaging.
+Windows builds generate icon/version resources before compiling.
 
 The UI uses Japanese source messages with an English catalog in `frontend/src/messages.js`; `i18n.js` selects the language and interpolates data without translating it. Native messages live in `internal/i18n`. Extend both catalogs when adding languages.
 
