@@ -10,7 +10,7 @@ Wails 製の常駐型 **音声入力ポップアップ**。ホットキーで呼
 
 ![speech-popup で音声入力する様子](docs/speech_popup.gif)
 
-[MP4 で見る](docs/speech_popup.mp4) · [ポップアップの静止画を見る](docs/speech_popup_ja.png)
+[YouTube でデモを見る](https://youtu.be/CVzQ8gJrPJA) · [ポップアップの静止画を見る](docs/speech_popup_ja.png)
 
 ### 設定画面
 

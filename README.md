@@ -14,7 +14,7 @@ This project adapts the resident popup and clipboard workflow from [skk-popup](h
 
 ![speech-popup while recording](docs/speech_popup.png)
 
-[Watch the MP4 demo](docs/speech_popup.mp4)
+[Watch the demo on YouTube](https://youtu.be/CVzQ8gJrPJA)
 
 ### Settings
 
