@@ -26,7 +26,7 @@ globalThis.window.go = {
       TogglePopup: () => call("TogglePopup"),
       VertexSpeechHTTPRequest: (request) => call("VertexSpeechHTTPRequest", request),
       SelectVertexOAuthClient: () => call("SelectVertexOAuthClient"),
-      ConnectVertexOAuth: (clientId, clientSecret) => call("ConnectVertexOAuth", clientId, clientSecret),
+      ConnectVertexOAuth: (clientId, clientSecret, projectId) => call("ConnectVertexOAuth", clientId, clientSecret, projectId),
       GetVertexOAuthStatus: () => call("GetVertexOAuthStatus"),
       DisconnectVertexOAuth: () => call("DisconnectVertexOAuth")
     }

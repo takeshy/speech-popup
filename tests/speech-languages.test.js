@@ -4,7 +4,7 @@ import { speechLanguageCodes, speechLanguageLabel, speechLanguageOptions } from 
 import { defaultSendPhrase, initialSendPhrase, sendPhraseLanguage } from "../frontend/src/send_phrases.js";
 import { speechDraft } from "../frontend/src/speech.js";
 
-test("service catalogs use their own codes and have localized command defaults", () => {
+test("service catalogs use their own codes and start other languages with disabled commands", () => {
   for (const endpoint of ["openai", "custom", "whisper-cpp", "azure-mai-transcribe", "gemini-transcribe", "vertex-transcribe"]) {
     const codes = speechLanguageCodes("openai-compatible", endpoint);
     assert.ok(codes.length > 50);
@@ -12,7 +12,7 @@ test("service catalogs use their own codes and have localized command defaults",
     for (const code of codes) {
       assert.match(code, /^[a-z]{2,3}(?:-[a-z0-9]+)*$/i);
       assert.ok(speechLanguageLabel(code).includes(code));
-      if (!code.startsWith("en")) assert.notEqual(defaultSendPhrase(code), "over", code);
+      if (!["en", "ja"].includes(sendPhraseLanguage(code))) assert.equal(defaultSendPhrase(code), "", code);
     }
   }
   assert.ok(speechLanguageCodes("openai-compatible", "whisper-cpp").includes("jw"));
@@ -28,9 +28,9 @@ test("phrase language aliases, automatic language, and legacy edits are retained
   assert.equal(sendPhraseLanguage("jw"), "jv");
   assert.equal(sendPhraseLanguage("tl"), "fil");
   assert.equal(sendPhraseLanguage("cmn-Hans-CN"), "zh");
-  assert.equal(defaultSendPhrase("zh-TW"), "發送");
-  assert.equal(defaultSendPhrase("fr-CA"), "terminé");
-  assert.equal(initialSendPhrase({ language: "de", sendPhrase: "over, オーバー" }), "fertig");
+  assert.equal(defaultSendPhrase("zh-TW"), "");
+  assert.equal(defaultSendPhrase("fr-CA"), "");
+  assert.equal(initialSendPhrase({ language: "de", sendPhrase: "over, オーバー" }), "");
   assert.equal(initialSendPhrase({ language: "de", sendPhrase: "my command" }), "my command");
   assert.equal(initialSendPhrase({ language: "de", sendPhrase: "" }), "");
   assert.equal(initialSendPhrase({ language: "de", sendPhrase: "old", sendPhraseProfiles: { de: "" } }), "");
@@ -46,7 +46,8 @@ test("multilingual send commands match whole words or unspaced script endings", 
     ["th", "สวัสดีส่งข้อความ", "สวัสดี"],
     ["ko", "안녕하세요 전송", "안녕하세요"]
   ]) {
-    const draft = speechDraft("", transcript, true, defaultSendPhrase(code));
+    const phrase = { fr: "terminé", ru: "готово", ar: "إرسال", hi: "भेजो", zh: "发送", th: "ส่งข้อความ", ko: "전송" }[code];
+    const draft = speechDraft("", transcript, true, phrase);
     assert.equal(draft.send, true, code);
     assert.equal(draft.text, result, code);
   }

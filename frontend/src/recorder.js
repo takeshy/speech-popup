@@ -67,7 +67,7 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
         const transcript = await transcribeSpeech(wav, current.settings, transport, current.controller.signal);
         if (active !== current) return;
         if (!transcript) throw new Error(t("音声を認識できませんでした。もう一度お試しください。"));
-        const draft = speechDraft(getBase(), transcript, true, current.settings.sendPhrase, chunk.afterSilence);
+        const draft = speechDraft(getBase(), transcript, true, current.settings.sendPhrase, chunk.afterSilence, false, current.settings.symbolCommands);
         retained.shift();
         publish({ retainedCount: retained.length });
         onInput(draft.text);

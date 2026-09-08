@@ -194,3 +194,49 @@ func TestSendPhraseProfilesRoundTripAndIsolation(t *testing.T) {
 		t.Fatal("views share mutable send phrase storage")
 	}
 }
+
+func TestSymbolPhraseMapsRoundTripAndIsolation(t *testing.T) {
+	v := ToView(Default())
+	v.Speech.ExclamationPhrases = map[string]string{"ja": "", "es": "así es"}
+	v.Speech.QuestionPhrases = map[string]string{"en": "", "ja": "質問です", "es": "signo de pregunta"}
+	v.Speech.NewlinePhrases = map[string]string{"en": "next paragraph", "es": "se acabo, se acabó", "ja": ""}
+	cfg, err := FromView(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := t.TempDir() + "/config.toml"
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got := ToView(LoadFrom(path))
+	if !reflect.DeepEqual(got.Speech.ExclamationPhrases, v.Speech.ExclamationPhrases) ||
+		!reflect.DeepEqual(got.Speech.QuestionPhrases, v.Speech.QuestionPhrases) ||
+		!reflect.DeepEqual(got.Speech.NewlinePhrases, v.Speech.NewlinePhrases) {
+		t.Fatal("symbol phrase maps changed on reload")
+	}
+	delete(v.Speech.QuestionPhrases, "en")
+	delete(got.Speech.NewlinePhrases, "es")
+	if len(cfg.Speech.QuestionPhrases) != 3 || len(cfg.Speech.NewlinePhrases) != 3 {
+		t.Fatal("symbol phrase maps share mutable storage")
+	}
+}
+
+func TestVertexProjectRestoredFromOAuthAcrossServices(t *testing.T) {
+	v := validView()
+	v.SetVertexProject("oauth-project")
+	if v.Speech.Profiles[EndpointVertex].VertexProjectID != "oauth-project" {
+		t.Fatal("missing Vertex profile when another service is selected")
+	}
+	if v.Speech.VertexProjectID != "" {
+		t.Fatal("modified the selected service's project")
+	}
+	v.Speech.EndpointType = EndpointVertex
+	v.SetVertexProject("new-json-project")
+	next, err := FromView(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Speech.VertexProjectID != "new-json-project" || next.Speech.Profiles[EndpointVertex].VertexProjectID != "new-json-project" {
+		t.Fatal("selected Vertex settings did not follow the OAuth project")
+	}
+}

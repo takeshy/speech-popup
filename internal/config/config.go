@@ -42,6 +42,9 @@ type HotkeyConfig struct {
 // turned into text. api_key is stored in plain text in config.toml, which is
 // written with 0600 permissions.
 type SpeechConfig struct {
+	ExclamationPhrases map[string]string
+	QuestionPhrases    map[string]string
+	NewlinePhrases     map[string]string
 	SendPhraseProfiles map[string]string
 	Profiles           map[string]SpeechProfile
 
@@ -277,12 +280,23 @@ func (c *Config) apply(section, key, value string) {
 		return
 	}
 
-	if section == "speech.send_phrases" {
+	var phrases *map[string]string
+	switch section {
+	case "speech.send_phrases":
+		phrases = &c.Speech.SendPhraseProfiles
+	case "speech.exclamation_phrases":
+		phrases = &c.Speech.ExclamationPhrases
+	case "speech.question_phrases":
+		phrases = &c.Speech.QuestionPhrases
+	case "speech.newline_phrases":
+		phrases = &c.Speech.NewlinePhrases
+	}
+	if phrases != nil {
 		if languagePattern.MatchString(key) {
-			if c.Speech.SendPhraseProfiles == nil {
-				c.Speech.SendPhraseProfiles = make(map[string]string)
+			if *phrases == nil {
+				*phrases = make(map[string]string)
 			}
-			c.Speech.SendPhraseProfiles[key] = value
+			(*phrases)[key] = value
 		}
 		return
 	}
@@ -412,7 +426,10 @@ func Marshal(c *Config) string {
 	b.WriteString("# ポップアップを開いた直後に録音を開始する\n")
 	fmt.Fprintf(&b, "auto_start = %t\n", c.Speech.AutoStart)
 	c.Speech.marshalProfiles(&b)
-	c.Speech.marshalSendPhrases(&b)
+	marshalPhraseMap(&b, "exclamation_phrases", c.Speech.ExclamationPhrases)
+	marshalPhraseMap(&b, "send_phrases", c.Speech.SendPhraseProfiles)
+	marshalPhraseMap(&b, "question_phrases", c.Speech.QuestionPhrases)
+	marshalPhraseMap(&b, "newline_phrases", c.Speech.NewlinePhrases)
 	b.WriteString("\n[clipboard]\n")
 	b.WriteString("# \"wl-copy\" | \"wails\" (既定: Linux=wl-copy, Windows/macOS=wails)\n")
 	fmt.Fprintf(&b, "backend = %s\n", quote(c.Clipboard.Backend))

@@ -84,8 +84,8 @@ func cloneSendPhrases(profiles map[string]string) map[string]string {
 	return result
 }
 
-func (s *SpeechConfig) marshalSendPhrases(b *strings.Builder) {
-	profiles := cloneSendPhrases(s.SendPhraseProfiles)
+func marshalPhraseMap(b *strings.Builder, section string, values map[string]string) {
+	profiles := cloneSendPhrases(values)
 	if len(profiles) == 0 {
 		return
 	}
@@ -94,7 +94,7 @@ func (s *SpeechConfig) marshalSendPhrases(b *strings.Builder) {
 		names = append(names, language)
 	}
 	sort.Strings(names)
-	b.WriteString("\n[speech.send_phrases]\n")
+	fmt.Fprintf(b, "\n[speech.%s]\n", section)
 	for _, language := range names {
 		fmt.Fprintf(b, "%s = %s\n", language, quote(profiles[language]))
 	}

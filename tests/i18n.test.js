@@ -21,7 +21,7 @@ test("translation preserves interpolated user text and placeholder-like content"
 });
 
 test("all literal UI translation calls have an English catalog entry", () => {
-  for (const file of ["main", "speech", "recorder", "browser_speech", "speech_languages", "send_phrases"]) {
+  for (const file of ["main", "speech", "recorder", "browser_speech", "speech_languages", "send_phrases", "speech_commands"]) {
     const source = readFileSync(new URL(`../frontend/src/${file}.js`, import.meta.url), "utf8");
     for (const match of source.matchAll(/\bt\(("(?:\\.|[^"\\])*")/g)) {
       const key = JSON.parse(match[1]);

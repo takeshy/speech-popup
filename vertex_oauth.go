@@ -39,6 +39,7 @@ type VertexOAuthStatus struct {
 }
 
 type vertexOAuthCredentials struct {
+	ProjectID    string    `json:"projectId,omitempty"`
 	ClientID     string    `json:"clientId"`
 	ClientSecret string    `json:"clientSecret,omitempty"`
 	RefreshToken string    `json:"refreshToken"`
@@ -85,7 +86,7 @@ func parseVertexOAuthClient(data []byte) (*VertexOAuthClient, error) {
 	return &VertexOAuthClient{ClientID: document.Installed.ClientID, ClientSecret: document.Installed.ClientSecret, ProjectID: document.Installed.ProjectID}, nil
 }
 
-func (a *App) ConnectVertexOAuth(clientID, clientSecret string) (*VertexOAuthStatus, error) {
+func (a *App) ConnectVertexOAuth(clientID, clientSecret, projectID string) (*VertexOAuthStatus, error) {
 	clientID = strings.TrimSpace(clientID)
 	if clientID == "" {
 		return nil, fmt.Errorf("%s", i18n.T("OAuth クライアント ID を指定してください"))
@@ -149,7 +150,7 @@ func (a *App) ConnectVertexOAuth(clientID, clientSecret string) (*VertexOAuthSta
 	if token.RefreshToken == "" {
 		return nil, fmt.Errorf("%s", i18n.T("Google からリフレッシュトークンが返されませんでした。既存の認可を取り消して接続し直してください"))
 	}
-	credentials := &vertexOAuthCredentials{ClientID: clientID, ClientSecret: clientSecret, RefreshToken: token.RefreshToken, AccessToken: token.AccessToken, Expiry: time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)}
+	credentials := &vertexOAuthCredentials{ProjectID: strings.TrimSpace(projectID), ClientID: clientID, ClientSecret: clientSecret, RefreshToken: token.RefreshToken, AccessToken: token.AccessToken, Expiry: time.Now().Add(time.Duration(token.ExpiresIn) * time.Second)}
 	if err := saveVertexOAuthCredentials(credentials); err != nil {
 		return nil, err
 	}

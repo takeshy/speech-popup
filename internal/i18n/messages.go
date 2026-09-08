@@ -23,7 +23,7 @@ var messages = map[string]string{
 	"endpoint_type %q は openai / whisper-cpp / custom / gemini-transcribe / vertex-transcribe / azure-mai-transcribe のいずれかを指定してください": "Endpoint type %q must be openai / whisper-cpp / custom / gemini-transcribe / vertex-transcribe / azure-mai-transcribe",
 	"発話を区切る無音は 0〜10 秒の範囲で指定してください":                                                                                                   "The pause between utterances must be between 0 and 10 seconds",
 	"言語 %q は auto か BCP-47 (ja / en-US など) で指定してください":                                                                                "Language %q must be auto or a BCP-47 tag (ja / en-US, for example)",
-	"Vertex AI の場合は Google Cloud プロジェクト ID を指定してください":                                                                                "Set the Google Cloud project ID for Vertex AI",
+	"Vertex AI の OAuth クライアント JSON を選択して Google に接続してください":                                                                           "Select the Vertex AI OAuth client JSON and connect to Google",
 	"Gemini API の API Key を指定してください":                                                                                                 "Set your Gemini API Key",
 	"STT の Model を指定してください":                                                                                                          "Set the STT Model",
 	"Base URL を指定してください":                                                                                                             "Set the Base URL",

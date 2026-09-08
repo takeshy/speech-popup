@@ -103,9 +103,8 @@
           <label class="wide">Model <input id="cfg-speech-model" type="text" placeholder="whisper-1" spellcheck="false"></label>
         </div>
         <div class="field-row" id="row-vertex">
-          <label class="wide">Google Cloud プロジェクト ID <input id="cfg-speech-vertex-project" type="text" placeholder="my-project" spellcheck="false"></label>
           <span id="vertex-status" class="settings-note"></span>
-          <p class="settings-note">Google Cloud のデスクトップアプリ用 OAuth クライアント JSON を選び、ブラウザで認可してください。サービスアカウントの JSON ではありません。接続後に設定を保存してください。</p>
+          <p class="settings-note">Google Cloud のデスクトップアプリ用 OAuth クライアント JSON を選び、ブラウザで認可してください。サービスアカウントの JSON ではありません。プロジェクト ID は JSON から取得します。接続後に設定を保存してください。</p>
           <button id="vertex-connect" type="button">JSON を選択して Google に接続</button>
           <button id="vertex-disconnect" type="button">接続を解除</button>
         </div>
@@ -117,13 +116,20 @@
           <label>発話を区切る無音 (秒) <input id="cfg-speech-silence" type="number" min="0" max="10" step="1"></label>
           <label class="check"><input id="cfg-speech-auto-start" type="checkbox"> ポップアップを開いたら自動で録音を開始する</label>
         </div>
+        <h3>音声コマンド</h3>
+        <div class="field-row">
+          <label class="wide">? にするフレーズ (カンマ区切り) <input id="cfg-question-phrases" type="text" spellcheck="false"></label>
+          <label class="wide">改行するフレーズ (カンマ区切り) <input id="cfg-newline-phrases" type="text" spellcheck="false"></label>
+          <label class="wide">! にするフレーズ (カンマ区切り) <input id="cfg-exclamation-phrases" type="text" spellcheck="false"></label>
+          <button id="speech-symbols-reset" type="button">この言語の初期値に戻す</button>
+        </div>
         <div class="field-row">
           <label class="wide">コピーして閉じる合図の言葉 (カンマ区切り) <input id="cfg-speech-send-phrase" type="text" spellcheck="false"></label>
           <button id="speech-send-phrase-reset" type="button">この言語の初期値に戻す</button>
         </div>
         <p class="settings-note">合図は聞き取り言語に合わせて切り替わります。編集した合図も言語ごとに保存されます。空欄で無効になります。</p>
         <p id="speech-language-note" class="settings-note"></p>
-        <p class="settings-note">句読点は認識結果のまま残します。末尾のクエスチョン／クエスチョンマーク／question（mark）だけを ? に変換します。</p>
+        <p class="settings-note">単語や複数語のフレーズを登録できます。認識確定時に発話末尾が一致すると動作します。初期値は日本語・英語のみです。</p>
         <p class="settings-note">API Key は config.toml に平文で保存されます (ファイルは 0600 で書き込まれます)。</p>
         <h3>ウィンドウ</h3>
         <div class="field-row">

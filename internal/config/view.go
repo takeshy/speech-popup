@@ -41,6 +41,9 @@ type HotkeyView struct {
 }
 
 type SpeechView struct {
+	ExclamationPhrases map[string]string        `json:"exclamationPhrases,omitempty"`
+	QuestionPhrases    map[string]string        `json:"questionPhrases,omitempty"`
+	NewlinePhrases     map[string]string        `json:"newlinePhrases,omitempty"`
 	SendPhraseProfiles map[string]string        `json:"sendPhraseProfiles,omitempty"`
 	Profiles           map[string]SpeechProfile `json:"profiles,omitempty"`
 	Provider           string                   `json:"provider"`
@@ -70,8 +73,11 @@ func ToView(c *Config) View {
 	v.Speech.Model = c.Speech.Model
 	v.Speech.Language = c.Speech.Language
 	v.Speech.SilenceSeconds = c.Speech.SilenceSeconds
+	v.Speech.ExclamationPhrases = cloneSendPhrases(c.Speech.ExclamationPhrases)
 	v.Speech.SendPhrase = c.Speech.SendPhrase
 	v.Speech.SendPhraseProfiles = cloneSendPhrases(c.Speech.SendPhraseProfiles)
+	v.Speech.QuestionPhrases = cloneSendPhrases(c.Speech.QuestionPhrases)
+	v.Speech.NewlinePhrases = cloneSendPhrases(c.Speech.NewlinePhrases)
 	v.Speech.VertexProjectID = c.Speech.VertexProjectID
 	v.Speech.AutoStart = c.Speech.AutoStart
 	v.Clipboard.Backend = c.Clipboard.Backend
@@ -159,8 +165,11 @@ func speechFromView(v SpeechView) (*SpeechConfig, error) {
 	s.APIKey = strings.TrimSpace(v.APIKey)
 	s.Model = strings.TrimSpace(v.Model)
 	s.Language = strings.TrimSpace(v.Language)
+	s.ExclamationPhrases = cloneSendPhrases(v.ExclamationPhrases)
 	s.SendPhrase = v.SendPhrase
 	s.SendPhraseProfiles = cloneSendPhrases(v.SendPhraseProfiles)
+	s.QuestionPhrases = cloneSendPhrases(v.QuestionPhrases)
+	s.NewlinePhrases = cloneSendPhrases(v.NewlinePhrases)
 	s.VertexProjectID = strings.TrimSpace(v.VertexProjectID)
 	s.AutoStart = v.AutoStart
 
@@ -179,7 +188,7 @@ func speechFromView(v SpeechView) (*SpeechConfig, error) {
 	switch {
 	case s.EndpointType == EndpointVertex:
 		if !projectIDPattern.MatchString(s.VertexProjectID) {
-			return nil, errors.New(i18n.T("Vertex AI の場合は Google Cloud プロジェクト ID を指定してください"))
+			return nil, errors.New(i18n.T("Vertex AI の OAuth クライアント JSON を選択して Google に接続してください"))
 		}
 	case s.EndpointType == EndpointGemini:
 		if s.APIKey == "" {
@@ -212,4 +221,18 @@ func validateSTTBaseURL(raw string) error {
 		return fmt.Errorf(i18n.T("Base URL %q には認証情報・クエリ・フラグメントを含まない HTTP(S) URL を指定してください"), raw)
 	}
 	return nil
+}
+
+// SetVertexProject restores the project paired with the saved OAuth connection,
+// even when another transcription service is currently selected.
+func (v *View) SetVertexProject(projectID string) {
+	if v.Speech.Profiles == nil {
+		v.Speech.Profiles = make(map[string]SpeechProfile)
+	}
+	profile := v.Speech.Profiles[EndpointVertex]
+	profile.VertexProjectID = projectID
+	v.Speech.Profiles[EndpointVertex] = profile
+	if v.Speech.EndpointType == EndpointVertex {
+		v.Speech.VertexProjectID = projectID
+	}
 }

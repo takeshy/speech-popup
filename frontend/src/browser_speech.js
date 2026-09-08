@@ -79,8 +79,13 @@ export function createBrowserRecognizer({ getSettings, getBase, getContext, getT
         if (recognition !== current) return;
         preserveEdits();
         const pending = results.slice(consumed);
-        const transcript = pending.map((result) => result.isFinal
-          ? convertSpokenSymbol(result[0].transcript) : result[0].transcript).join("");
+        const transcript = pending.map((result) => {
+          const text = result[0].transcript;
+          if (!result.isFinal) return text;
+          // Send phrases take precedence even when they end with a symbol alias.
+          if (speechDraft("", text, true, settings.sendPhrase, false, false, settings.symbolCommands).send) return text;
+          return convertSpokenSymbol(text, true, settings.symbolCommands);
+        }).join("");
         // Only a final trailing command sends; interim hypotheses may change.
         const draft = speechDraft(
           base,
@@ -88,7 +93,7 @@ export function createBrowserRecognizer({ getSettings, getBase, getContext, getT
           pending.length > 0 && pending.every((result) => result.isFinal),
           settings.sendPhrase,
           false,
-          true // Final segments already have their question command converted.
+          true // Final segments already have their configured symbol commands converted.
         );
         if (draft.text !== lastRendered) {
           lastRendered = draft.text;

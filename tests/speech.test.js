@@ -239,7 +239,7 @@ test("transcribeSpeech rejects a truncated Gemini candidate", async () => {
   );
 });
 
-test("only explicit question commands convert on final recognition, without needing silence", () => {
+test("question and Enter commands convert on final recognition, without needing silence", () => {
   for (const command of ["クエスチョン", "クエスチョンマーク", "question", "Question", "question mark"]) {
     for (const silence of [true, false]) {
       assert.equal(speechDraft("", `hello ${command}。`, true, "", silence).text, "hello?");
@@ -248,7 +248,7 @@ test("only explicit question commands convert on final recognition, without need
   }
   assert.equal(speechDraft("", "いいですかクエスチョン。", true, "").text, "いいですか?");
   for (const word of ["まる", "丸", "句点", "くてん", "てん", "読点", "カンマ", "ピリオド",
-    "はてな", "改行", "エンター", "exclamation", "comma", "period", "new line", "Enter",
+    "はてな", "改行", "exclamation", "comma", "period", "new line", "disenter", "enters",
     "subquestion", "questions", "クエスチョンについて話す"]) {
     assert.equal(speechDraft("", word, true, "", true).text, word);
   }
@@ -319,4 +319,15 @@ test("Azure reports unsupported enhanced-mode endpoints without exposing respons
         return true;
       });
   }
+});
+
+test("spoken Enter inserts a line break and preserves the preceding punctuation", () => {
+  for (const command of ["エンター", "enter", "Enter", "ENTER"]) {
+    assert.deepEqual(speechDraft("前の文。", command + "。", true, ""), { text: "前の文。\n", send: false });
+    assert.equal(speechDraft("", "前の文。 " + command + "。", true, "").text, "前の文。\n");
+    assert.equal(speechDraft("", command, false, "").text, command);
+  }
+  assert.equal(speechDraft("", "エンターについて話す", true, "").text, "エンターについて話す");
+  assert.equal(speechDraft("", "改行", true, "").text, "改行");
+  assert.equal(speechDraft("", "new line", true, "").text, "new line");
 });

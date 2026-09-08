@@ -111,7 +111,7 @@ api_key = "" # stored in plain text
 model = "whisper-1"
 language = "auto" # speech language, not the UI language
 silence_seconds = 3 # 0 disables silence detection
-send_phrase = "over, オーバー"
+send_phrase = "おしまい"
 vertex_project_id = ""
 auto_start = true
 
@@ -132,7 +132,9 @@ Settings remembers each service's **Base URL, API Key, Model, language, and Vert
 
 **Speech language** is a dropdown with service-specific codes and native language names alongside the UI language. OpenAI uses the documented Whisper language suggestions, whisper.cpp uses its language catalog, Gemini/Vertex use regional codes, and Azure MAI uses its model's language list. Browser and self-hosted support depends on the installed engine/model. Choose **Other (language code)** for unlisted languages; existing codes are preserved. Automatic detection remains available for HTTP services; the browser option uses the WebView language.
 
-**Send phrases** follow the speech language: for example, English uses `over`, French `terminé`, and German `fertig`. You can edit the comma-separated phrases, leave the field empty to disable them, or choose **Reset to this language's default**. Edits are remembered per language (shared across services and regional variants; Traditional Chinese is separate) and persisted on **Save**. Existing customized phrases are retained for the currently selected language. With automatic language detection selected, phrase defaults follow the WebView's preferred language; they do not change based on each transcript.
+**Voice commands** have four editable targets: **?**, **line break**, **!**, and **copy and close**. Settings remembers phrases per speech language and restores them when you switch languages or services. Defaults are provided only for Japanese (クエスチョン / クエスチョンマーク, エンター, びっくり, おしまい) and English (question / question mark, enter, exclamation, over). Other languages start empty. Existing saved phrases are retained.
+
+Each field accepts words or multi-word phrases, with alternatives separated by commas: for example, `se acabo, se acabó`. Match the spelling the recognition service actually returns. An empty field disables that action; the reset buttons restore the current language's defaults. A phrase cannot be assigned to multiple actions. Changes are persisted on **Save**, including disabled commands. Regional variants share settings (Traditional Chinese is separate). When speech language is automatic, commands use the WebView's preferred language, not the detected language of each transcript.
 
 The language catalogs in `frontend/src/speech_languages.js` were checked against [official OpenAI documentation](https://developers.openai.com/api/docs/guides/text-to-speech#supported-languages), [whisper.cpp](https://github.com/ggml-org/whisper.cpp/blob/master/src/whisper.cpp), [Gemini](https://ai.google.dev/gemini-api/docs/transcribe#supported-languages), [Vertex](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-5-transcribe), and [Azure MAI](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe#language-support).
 
@@ -165,15 +167,15 @@ Enter the base endpoint without an API path or query string. The app adds the [M
 - **No speech was recognized:** the service returned an empty transcript. This does not by itself mean the language setting is wrong. Check that the microphone meter moves while speaking. Set **Pause between utterances (seconds)** to **0**, save, record about five seconds of speech, then stop manually with Ctrl+Space to test without automatic segmentation.
 - **Retrying after a settings change:** Ctrl+R resends the retained audio with the saved settings. Changing the silence duration does not re-segment retained audio. To test a fresh recording, discard the retained audio with Ctrl+D first if you no longer need it.
 
-Once manual recording works, try a pause of about **3 seconds** if you want automatic segmentation. A value of 0 disables automatic segmentation; question-command conversion still works when you stop recording manually.
+Once manual recording works, try a pause of about **3 seconds** if you want automatic segmentation. A value of 0 disables automatic segmentation; question/Enter command conversion still works when you stop recording manually.
 
 ### Vertex AI
 
 1. Create a Google Cloud OAuth client of type **Desktop app** and download its JSON.
 2. Select Vertex AI in Settings, choose **Select JSON and connect to Google**, select the JSON and authorize in the browser.
-3. Enter your Cloud project ID and save.
+3. Save settings. The project ID is read automatically from the JSON; no manual entry is needed.
 
-OAuth credentials are stored under the config directory in `credentials/vertex-oauth.json` and survive service switches and app restarts. The app refreshes expiring access tokens using the saved refresh token. Disconnect attempts token revocation and removes the local credentials.
+The project ID is also saved with the OAuth connection, so it is restored when reopening Settings or switching services. OAuth credentials are stored under the config directory in `credentials/vertex-oauth.json` and survive service switches and app restarts. The app refreshes expiring access tokens using the saved refresh token. Disconnect attempts token revocation and removes the local credentials.
 
 ## Local data and privacy
 
@@ -226,11 +228,11 @@ The UI uses Japanese source messages with an English catalog in `frontend/src/me
 
 Recognition inserts at the current caret, or replaces the selected text, while preserving the text after it. Moving the caret during recording changes where the next result is inserted. Undo restores the text and selection. Browser interim results can be revised in place; moving the caret commits what is already displayed, and new recognition segments use the new position.
 
-Punctuation returned by the service, including Japanese `。` and `、`, is preserved. Only a trailing `question`, `question mark`, `クエスチョン`, or `クエスチョンマーク` becomes `?` when recognition is final. This also works on manual stop and with **Pause between utterances** set to 0. Other former punctuation/line-break commands are treated as ordinary text. Use Shift+Enter for a line break. The copy-and-close send phrase remains available.
+Punctuation returned by the service, including Japanese `。` and `、`, is generally preserved. A full stop (`。`, `.`, `．`, `۔`, `।`, `॥`, or `։`) immediately before `!` or `?` (including full-width variants and Arabic `؟`) is removed, including when the mark is dictated separately after the caret. This does not cross a line break. Configured voice-command phrases match only the end of final recognition; they also work on manual stop and with **Pause between utterances** set to 0. A newline command inserts a line break without copying or closing; the send command takes precedence. Only the phrases configured for the current speech language are active. Other text is left unchanged, so `改行` or `new line` only becomes a command if you explicitly register it. Shift+Enter also inserts a line break.
 
 For recorded services, a pause splits the recording into requests; the microphone stays open while earlier requests run. Two audible samples at least 100 ms apart and no more than 300 ms apart now arm the silence timeout, instead of requiring 250 ms of uninterrupted loud audio. Submission still waits for the configured silence duration; the delay has not become zero. If an isolated word still does not produce a result, stop with Ctrl+Space to submit it explicitly and distinguish silence detection from service behavior. Recognition accuracy still depends on the service.
 
-The popup grows with line breaks and wrapped text, up to 600 px tall (or your configured height if larger), within the available screen height. Beyond that, the editor scrolls. Removing text shrinks it toward the configured height; automatic sizing does not change your saved settings.
+The popup grows with line breaks and wrapped text, within the available screen height. Beyond that, the editor scrolls to keep the insertion point visible. Removing text shrinks it toward the configured height; automatic sizing does not change your saved settings.
 
 ### GitHub Releases
 

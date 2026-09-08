@@ -2,6 +2,7 @@ import { t, getLanguage, setLanguage, localizeDOM } from "./i18n.js";
 // speech-popup UI: a resident popup that records speech, transcribes it, and
 // puts the result on the clipboard for the window that had focus before.
 
+import { defaultSpeechCommands, speechCommandsFor, splitCommandPhrases } from "./speech_commands.js";
 import { defaultSendPhrase, initialSendPhrase, sendPhraseLanguage } from "./send_phrases.js";
 import { speechLanguageOptions } from "./speech_languages.js";
 import { createRecorder, speechSupported } from "./recorder.js";
@@ -65,7 +66,6 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     speechLanguage: document.getElementById("cfg-speech-language"),
     speechSilence: document.getElementById("cfg-speech-silence"),
     speechSendPhrase: document.getElementById("cfg-speech-send-phrase"),
-    speechVertexProject: document.getElementById("cfg-speech-vertex-project"),
     speechAutoStart: document.getElementById("cfg-speech-auto-start"),
     windowWidth: document.getElementById("cfg-window-width"),
     windowHeight: document.getElementById("cfg-window-height"),
@@ -91,7 +91,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     t("認識結果はそのまま編集できます (通常のテキストエリア)"),
     t("Enter                 コピーして閉じる"),
     t("Shift+Enter           改行"),
-    t("認識結果の句読点はそのまま使用。発話末尾のクエスチョン → ?（認識確定時）"),
+    t("音声コマンド: 設定したフレーズで ?・改行・!・コピーして閉じる（発話末尾、認識確定時）"),
     t("Ctrl+A / Ctrl+E       行頭 / 行末"),
     t("Ctrl+B / Ctrl+F       1文字左 / 右"),
     t("Ctrl+K / Ctrl+U       行末まで削除 / 行頭まで削除"),
@@ -276,6 +276,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       language: speech.language ?? "auto",
       silenceSeconds: speech.silenceSeconds ?? 0,
       sendPhrase: initialSendPhrase(speech),
+      symbolCommands: speechCommandsFor(speech),
       vertexProjectId: speech.vertexProjectId ?? ""
     };
   }
@@ -531,7 +532,11 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
 
   let serviceProfiles = {};
   let formEndpoint = "";
+  let formVertexProjectId = "";
   let sendPhraseProfiles = {};
+  let exclamationPhrases = {};
+  let questionPhrases = {};
+  let newlinePhrases = {};
   let formPhraseLanguage = "";
 
   function rememberService() {
@@ -541,7 +546,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       apiKey: cfgFields.speechApiKey.value.trim(),
       model: cfgFields.speechModel.value.trim(),
       language: readSpeechLanguage(),
-      vertexProjectId: cfgFields.speechVertexProject.value.trim()
+      vertexProjectId: formVertexProjectId
     };
   }
 
@@ -558,9 +563,13 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     renderSpeechLanguages(view.speech.language || "auto");
     cfgFields.speechSilence.value = String(view.speech.silenceSeconds);
     sendPhraseProfiles = structuredClone(view.speech.sendPhraseProfiles ?? {});
+    exclamationPhrases = structuredClone(view.speech.exclamationPhrases ?? {});
+    questionPhrases = structuredClone(view.speech.questionPhrases ?? {});
+    newlinePhrases = structuredClone(view.speech.newlinePhrases ?? {});
     formPhraseLanguage = sendPhraseLanguage(view.speech.language);
     cfgFields.speechSendPhrase.value = initialSendPhrase(view.speech);
-    cfgFields.speechVertexProject.value = view.speech.vertexProjectId;
+    fillSymbolCommands();
+    formVertexProjectId = view.speech.vertexProjectId ?? "";
     cfgFields.speechAutoStart.checked = view.speech.autoStart;
     cfgFields.windowWidth.value = String(view.window.width);
     cfgFields.windowHeight.value = String(view.window.height);
@@ -605,10 +614,23 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
         : t("言語はサービスごとに保存されます。一覧にない言語は「その他」で指定できます。");
   }
 
+  function fillSymbolCommands() {
+    const defaults = defaultSpeechCommands(formPhraseLanguage);
+    document.getElementById("cfg-exclamation-phrases").value = exclamationPhrases[formPhraseLanguage] ?? defaults.exclamation;
+    document.getElementById("cfg-question-phrases").value = questionPhrases[formPhraseLanguage] ?? defaults.question;
+    document.getElementById("cfg-newline-phrases").value = newlinePhrases[formPhraseLanguage] ?? defaults.newline;
+  }
+
   function switchSendPhraseLanguage() {
-    if (formPhraseLanguage) sendPhraseProfiles[formPhraseLanguage] = cfgFields.speechSendPhrase.value;
+    if (formPhraseLanguage) {
+      sendPhraseProfiles[formPhraseLanguage] = cfgFields.speechSendPhrase.value;
+      exclamationPhrases[formPhraseLanguage] = document.getElementById("cfg-exclamation-phrases").value;
+      questionPhrases[formPhraseLanguage] = document.getElementById("cfg-question-phrases").value;
+      newlinePhrases[formPhraseLanguage] = document.getElementById("cfg-newline-phrases").value;
+    }
     formPhraseLanguage = sendPhraseLanguage(readSpeechLanguage());
     cfgFields.speechSendPhrase.value = sendPhraseProfiles[formPhraseLanguage] ?? defaultSendPhrase(formPhraseLanguage);
+    fillSymbolCommands();
   }
 
   function readSettingsForm() {
@@ -627,7 +649,10 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
         silenceSeconds: Number(cfgFields.speechSilence.value),
         sendPhrase: cfgFields.speechSendPhrase.value,
         sendPhraseProfiles: structuredClone(sendPhraseProfiles),
-        vertexProjectId: cfgFields.speechVertexProject.value.trim(),
+        exclamationPhrases: structuredClone(exclamationPhrases),
+        questionPhrases: structuredClone(questionPhrases),
+        newlinePhrases: structuredClone(newlinePhrases),
+        vertexProjectId: formVertexProjectId,
         autoStart: cfgFields.speechAutoStart.checked
       },
       window: {
@@ -675,7 +700,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     cfgFields.speechApiKey.value = preset.apiKey ?? "";
     renderSpeechLanguages(preset.language ?? "auto");
     switchSendPhraseLanguage();
-    cfgFields.speechVertexProject.value = preset.vertexProjectId ?? "";
+    formVertexProjectId = preset.vertexProjectId ?? "";
     updateSpeechFieldVisibility();
   }
 
@@ -698,11 +723,11 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
         setSettingsStatus("");
         return;
       }
-      if (client.projectId && !cfgFields.speechVertexProject.value.trim()) {
-        cfgFields.speechVertexProject.value = client.projectId;
-      }
+      const projectId = client.projectId?.trim();
+      if (!projectId) throw new Error(t("OAuth クライアント JSON に project_id がありません。Google Cloud から JSON を再ダウンロードしてください。"));
       setSettingsStatus(t("ブラウザで Google の認可を完了してください…"));
-      await appBinding()?.ConnectVertexOAuth(client.clientId, client.clientSecret ?? "");
+      await appBinding()?.ConnectVertexOAuth(client.clientId, client.clientSecret ?? "", projectId);
+      formVertexProjectId = projectId;
       setSettingsStatus(t("Google に接続しました。"));
     } catch (caught) {
       setSettingsStatus(message(caught), true);
@@ -806,8 +831,17 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   }
 
   async function saveSettings() {
-    const view = readSettingsForm();
     try {
+      const view = readSettingsForm();
+      const phrases = [
+        document.getElementById("cfg-exclamation-phrases").value,
+        document.getElementById("cfg-question-phrases").value,
+        document.getElementById("cfg-newline-phrases").value,
+        cfgFields.speechSendPhrase.value
+      ].map(value => new Set(splitCommandPhrases(value).map(phrase => phrase.toLowerCase())));
+      if (phrases.some((group, index) => phrases.slice(index + 1).some(other => [...group].some(phrase => other.has(phrase))))) {
+        throw new Error(t("同じフレーズを複数の動作に設定することはできません。"));
+      }
       const result = await appBinding()?.SaveConfig(view);
       config = await appBinding()?.LoadConfig();
       await applyUILanguage(config?.uiLanguage || view.uiLanguage);
@@ -890,6 +924,12 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     else switchSendPhraseLanguage();
   });
   document.getElementById("cfg-speech-language-custom").addEventListener("change", switchSendPhraseLanguage);
+  document.getElementById("speech-symbols-reset").addEventListener("click", () => {
+    const defaults = defaultSpeechCommands(readSpeechLanguage());
+    document.getElementById("cfg-exclamation-phrases").value = defaults.exclamation;
+    document.getElementById("cfg-question-phrases").value = defaults.question;
+    document.getElementById("cfg-newline-phrases").value = defaults.newline;
+  });
   document.getElementById("speech-send-phrase-reset").addEventListener("click", () => {
     cfgFields.speechSendPhrase.value = defaultSendPhrase(readSpeechLanguage());
   });

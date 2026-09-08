@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { createRecorder, speechSupported } from "../frontend/src/recorder.js";
 import { createTextEditor } from "../frontend/src/editor.js";
 import { createAutoSizer } from "../frontend/src/autosize.js";
+import { defaultSpeechCommands, speechCommandsFor, splitCommandPhrases } from "../frontend/src/speech_commands.js";
 import { defaultSendPhrase, initialSendPhrase, sendPhraseLanguage } from "../frontend/src/send_phrases.js";
 import { speechLanguageOptions } from "../frontend/src/speech_languages.js";
 import { t as translate, setLanguage, getLanguage } from "../frontend/src/i18n.js";
@@ -24,7 +25,7 @@ async function until(predicate) {
   assert.fail("UI did not reach the expected state");
 }
 
-async function setup(t, { history = [], copyFails = false, vertexClient = null, speech = {} } = {}) {
+async function setup(t, { history = [], copyFails = false, vertexClient = null, speech = {}, respond = null } = {}) {
   let microphoneRequests = 0;
   const audioGlobals = {
     navigator: { mediaDevices: { getUserMedia: async () => {
@@ -119,6 +120,7 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
     HidePopup: async () => { hides++; events["popup:hidden"](); },
     SpeechHTTPRequest: async (request) => {
       requests.push(request);
+      if (respond) return respond(request);
       return request.headers.Authorization === "Bearer corrected"
         ? { status: 200, body: '{"text":"recognized"}' }
         : { status: 401, body: "" };
@@ -131,7 +133,7 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
       EventsOn(name, callback) { events[name] = callback; }
     } },
     createRecorder, createTextEditor, createAutoSizer, speechSupported, endpointPreset, isGoogleEndpoint, validateSpeechSettings,
-    t: translate, getLanguage, setLanguage, speechLanguageOptions, defaultSendPhrase, initialSendPhrase, sendPhraseLanguage,
+    t: translate, getLanguage, setLanguage, speechLanguageOptions, defaultSendPhrase, initialSendPhrase, sendPhraseLanguage, defaultSpeechCommands, speechCommandsFor, splitCommandPhrases,
     Option: class { constructor(text, value) { this.textContent = text; this.value = value; } },
     localizeDOM() {},
     createAudioMeter: () => ({ attach: async () => true }),
@@ -254,18 +256,39 @@ test("reopening archives uncopied text, clears the editor and allows history ret
   assert.deepEqual(ui.history(), ["older", " uncopied\ntext "], "empty input adds no entry");
 });
 
-test("Vertex JSON populates the project and passes client credentials to Google connection", async (t) => {
-  const ui = await setup(t, { vertexClient: { clientId: "desktop-client", clientSecret: "secret", projectId: "cloud-project" } });
+test("Vertex JSON replaces the saved project and persists it without manual entry", async (t) => {
+  const ui = await setup(t, {
+    vertexClient: { clientId: "desktop-client", clientSecret: "secret", projectId: "cloud-project" },
+    speech: { endpointType: "vertex-transcribe", vertexProjectId: "old-project" }
+  });
   ui.element("menu-settings").fire("click");
   await until(() => ui.element("cfg-speech-api-key").value === "invalid");
   ui.element("vertex-connect").fire("click");
   await until(() => ui.element("settings-status").textContent === "Google に接続しました。");
-  assert.deepEqual(ui.vertexConnections, [["desktop-client", "secret"]]);
-  assert.equal(ui.element("cfg-speech-vertex-project").value, "cloud-project");
-  ui.element("cfg-speech-vertex-project").value = "billing-project";
+  assert.deepEqual(ui.vertexConnections, [["desktop-client", "secret", "cloud-project"]]);
+  ui.element("cfg-speech-endpoint").value = "openai";
+  ui.element("cfg-speech-endpoint").fire("change");
+  ui.element("cfg-speech-endpoint").value = "vertex-transcribe";
+  ui.element("cfg-speech-endpoint").fire("change");
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").textContent === "保存しました。");
+  assert.equal(ui.config().speech.vertexProjectId, "cloud-project");
+  assert.equal(ui.config().speech.profiles["vertex-transcribe"].vertexProjectId, "cloud-project");
+});
+
+test("Vertex JSON without a project stops before OAuth and preserves the saved project", async (t) => {
+  const ui = await setup(t, {
+    vertexClient: { clientId: "desktop-client", projectId: " " },
+    speech: { endpointType: "vertex-transcribe", vertexProjectId: "old-project" }
+  });
+  ui.element("menu-settings").fire("click");
+  await until(() => ui.element("cfg-speech-api-key").value === "invalid");
   ui.element("vertex-connect").fire("click");
-  await until(() => ui.vertexConnections.length === 2);
-  assert.equal(ui.element("cfg-speech-vertex-project").value, "billing-project");
+  await until(() => ui.element("settings-status").textContent.includes("project_id"));
+  assert.deepEqual(ui.vertexConnections, []);
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").textContent === "保存しました。");
+  assert.equal(ui.config().speech.vertexProjectId, "old-project");
 });
 
 test("canceling the Vertex JSON picker does not start OAuth", async (t) => {
@@ -298,7 +321,7 @@ test("Azure MAI endpoint and key persist when Settings is reopened", async (t) =
 });
 
 test("service profiles restore edits, isolate keys, and survive saving and reopening", async (t) => {
-  const ui = await setup(t);
+  const ui = await setup(t, { speech: { profiles: { "vertex-transcribe": { vertexProjectId: "my-project", baseUrl: "", model: "", language: "auto" } } } });
   ui.element("menu-settings").fire("click");
   await until(() => ui.element("cfg-speech-api-key").value === "invalid");
   const switchTo = (name) => {
@@ -314,11 +337,9 @@ test("service profiles restore edits, isolate keys, and survive saving and reope
   ui.element("cfg-speech-language").value = "ja";
   switchTo("vertex-transcribe");
   assert.equal(ui.element("cfg-speech-api-key").value, "");
-  ui.element("cfg-speech-vertex-project").value = "my-project";
   switchTo("openai");
   assert.equal(ui.element("cfg-speech-api-key").value, "invalid");
   assert.equal(ui.element("cfg-speech-language").value, "en");
-  assert.equal(ui.element("cfg-speech-vertex-project").value, "");
   switchTo("azure-mai-transcribe");
   assert.equal(ui.element("cfg-speech-api-key").value, "azure-key");
   assert.equal(ui.element("cfg-speech-model").value, "MAI-Transcribe-1.5");
@@ -328,7 +349,7 @@ test("service profiles restore edits, isolate keys, and survive saving and reope
   ui.element("menu-settings").fire("click");
   await new Promise((resolve) => setImmediate(resolve));
   switchTo("vertex-transcribe");
-  assert.equal(ui.element("cfg-speech-vertex-project").value, "my-project");
+  assert.equal(ui.config().speech.profiles["vertex-transcribe"].vertexProjectId, "my-project");
   switchTo("openai");
   assert.equal(ui.element("cfg-speech-api-key").value, "invalid");
   ui.element("cfg-speech-api-key").value = "unsaved";
@@ -399,22 +420,22 @@ test("send phrases follow language changes, remember edits and disabling, and re
   const choose = (code) => { language.value = code; language.fire("change"); };
   assert.equal(phrase.value, "over");
   choose("fr");
-  assert.equal(phrase.value, "terminé");
+  assert.equal(phrase.value, "");
   phrase.value = "envoyer maintenant";
   choose("de");
-  assert.equal(phrase.value, "fertig");
+  assert.equal(phrase.value, "");
   phrase.value = "";
   choose("fr");
   assert.equal(phrase.value, "envoyer maintenant");
   choose("de");
   assert.equal(phrase.value, "");
   ui.element("speech-send-phrase-reset").fire("click");
-  assert.equal(phrase.value, "fertig");
+  assert.equal(phrase.value, "");
   choose("fr");
   ui.element("settings-form").fire("submit");
   await until(() => ui.element("settings-status").textContent === "保存しました。");
   assert.equal(ui.config().speech.sendPhraseProfiles.fr, "envoyer maintenant");
-  assert.equal(ui.config().speech.sendPhraseProfiles.de, "fertig");
+  assert.equal(ui.config().speech.sendPhraseProfiles.de, "");
   ui.element("menu-settings").fire("click");
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(phrase.value, "envoyer maintenant");
@@ -459,4 +480,107 @@ test("recorded speech replaces selected text and keeps the remaining text", asyn
   await until(() => ui.element("mode").dataset.recording === "true");
   ui.element("record").fire("click");
   await until(() => input.value === "left recognized right");
+});
+
+test("question and newline phrases follow language, preserve overrides, and survive save", async (t) => {
+  const ui = await setup(t, { speech: { language: "en", sendPhrase: "over, オーバー" } });
+  const language = ui.element("cfg-speech-language");
+  const question = ui.element("cfg-question-phrases");
+  const newline = ui.element("cfg-newline-phrases");
+  const choose = (code) => { language.value = code; language.fire("change"); };
+  assert.equal(newline.value, "enter");
+  question.value = "";
+  choose("es");
+  assert.equal(question.value, "");
+  assert.equal(newline.value, "");
+  assert.equal(ui.element("cfg-speech-send-phrase").value, "");
+  question.value = "signo de pregunta";
+  newline.value = "nueva línea";
+  ui.element("cfg-exclamation-phrases").value = "así es";
+  ui.element("cfg-speech-send-phrase").value = "se acabo, se acabó";
+  choose("ja");
+  assert.equal(newline.value, "エンター");
+  choose("en");
+  assert.equal(question.value, "", "disabled English command stays disabled");
+  choose("es");
+  assert.equal(question.value, "signo de pregunta");
+  assert.equal(newline.value, "nueva línea");
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").textContent === "保存しました。");
+  assert.equal(ui.config().speech.questionPhrases.es, "signo de pregunta");
+  assert.equal(ui.config().speech.exclamationPhrases.es, "así es");
+  assert.equal(ui.config().speech.newlinePhrases.es, "nueva línea");
+  assert.equal(ui.config().speech.sendPhraseProfiles.es, "se acabo, se acabó");
+  ui.element("menu-settings").fire("click");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(newline.value, "nueva línea");
+  assert.equal(ui.element("cfg-exclamation-phrases").value, "así es");
+  ui.element("speech-symbols-reset").fire("click");
+  assert.equal(ui.element("cfg-exclamation-phrases").value, "");
+  assert.equal(question.value, "");
+  assert.equal(newline.value, "");
+});
+
+test("one phrase cannot be assigned to two actions", async (t) => {
+  const ui = await setup(t, { speech: { language: "en" } });
+  ui.element("cfg-question-phrases").value = "same phrase";
+  ui.element("cfg-newline-phrases").value = "SAME PHRASE";
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").dataset.error === "true");
+  assert.equal(ui.config().speech.questionPhrases, undefined);
+});
+
+test("saved symbol phrases actually control recorded transcription", async (t) => {
+  const ui = await setup(t, { speech: {
+    language: "es", apiKey: "corrected", newlinePhrases: { es: "recognized" },
+    questionPhrases: { es: "" }
+  } });
+  const input = ui.element("input");
+  input.value = "before. after";
+  input.setSelectionRange(7, 7);
+  ui.element("record").fire("click");
+  await until(() => ui.element("mode").dataset.recording === "true");
+  ui.element("record").fire("click");
+  await until(() => input.value === "before.\n after");
+  assert.equal(ui.hides(), 0);
+});
+
+
+test("MAI transcription still uses its saved endpoint, key, model and language after another service", async (t) => {
+  const ui = await setup(t, {
+    speech: { endpointType: "azure-mai-transcribe", baseUrl: "https://mai.example.com", apiKey: "mai-key",
+      model: "MAI-Transcribe-2", language: "ja" },
+    respond: request => request.url.includes("mai.example.com")
+      ? { status: 200, body: JSON.stringify({ combinedPhrases: [{ text: "MAI result" }] }) }
+      : { status: 200, body: JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: "Gemini result" }] } }] }) }
+  });
+  const record = async expected => {
+    ui.element("record").fire("click");
+    await until(() => ui.element("mode").dataset.recording === "true");
+    ui.element("record").fire("click");
+    await until(() => ui.element("input").value.endsWith(expected));
+  };
+  const switchService = async endpoint => {
+    ui.element("menu-settings").fire("click");
+    await new Promise(resolve => setImmediate(resolve));
+    ui.element("cfg-speech-endpoint").value = endpoint;
+    ui.element("cfg-speech-endpoint").fire("change");
+    if (endpoint === "gemini-transcribe") ui.element("cfg-speech-api-key").value = "gemini-key";
+    ui.element("settings-form").fire("submit");
+    await until(() => ui.element("settings-status").textContent === "保存しました。");
+    ui.element("settings-close").fire("click");
+  };
+  await record("MAI result");
+  await switchService("gemini-transcribe");
+  await record("Gemini result");
+  await switchService("azure-mai-transcribe");
+  await record("MAI result");
+  assert.equal(ui.requests.length, 3);
+  for (const request of [ui.requests[0], ui.requests[2]]) {
+    assert.match(request.url, /^https:\/\/mai\.example\.com\//);
+    assert.equal(request.headers["Ocp-Apim-Subscription-Key"], "mai-key");
+    const multipart = Buffer.from(request.bodyBase64, "base64").toString();
+    assert.ok(multipart.includes('"model":"MAI-Transcribe-2"'));
+    assert.ok(multipart.includes('"locales":["ja"]'));
+  }
 });

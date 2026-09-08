@@ -64,14 +64,17 @@ func (a *App) GetAppInfo() AppInfo {
 // LoadConfig returns the configuration currently in effect.
 func (a *App) LoadConfig() config.View {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	return config.ToView(a.cfg)
+	view := config.ToView(a.cfg)
+	a.mu.Unlock()
+	restoreVertexProject(&view)
+	return view
 }
 
 // SaveConfig validates, writes config.toml, and applies what can change at
 // runtime: window size, speech settings, clipboard behaviour, and (on Windows)
 // the hotkey. Every setting takes effect without a restart.
 func (a *App) SaveConfig(view config.View) (SaveConfigResult, error) {
+	restoreVertexProject(&view)
 	next, err := config.FromView(view)
 	if err != nil {
 		return SaveConfigResult{}, err
@@ -140,7 +143,7 @@ func (a *App) ResizePopup(requestedHeight int) {
 	minimum := a.cfg.Window.Height
 	width := a.cfg.Window.Width
 	a.mu.Unlock()
-	height := min(max(requestedHeight, minimum), max(minimum, 600))
+	height := max(requestedHeight, minimum)
 	if screen, err := a.window.GetScreen(); err == nil && screen != nil && screen.WorkArea.Height > 0 {
 		area := screen.WorkArea
 		height = min(height, max(120, area.Height-24))
@@ -157,4 +160,14 @@ func (a *App) ResizePopup(requestedHeight int) {
 	if currentWidth != width || currentHeight != height {
 		a.window.SetSize(width, height)
 	}
+}
+
+// OAuth survives closing Settings without saving. Keep its project with the
+// credentials too, so reopening or switching services can recover the pairing.
+func restoreVertexProject(view *config.View) {
+	credentials, err := loadVertexOAuthCredentials()
+	if err != nil || credentials.RefreshToken == "" || credentials.ProjectID == "" {
+		return
+	}
+	view.SetVertexProject(credentials.ProjectID)
 }

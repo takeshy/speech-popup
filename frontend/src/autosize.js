@@ -24,13 +24,14 @@ export function createAutoSizer(input, { getMinimum, isOverlayOpen, resize, view
       input.scrollTop = scrollTop;
     }
     const minimum = getMinimum();
-    const target = Math.ceil(Math.max(minimum, Math.min(Math.max(minimum, 600), chrome + naturalHeight)));
+    const target = Math.ceil(Math.max(minimum, chrome + naturalHeight));
     running = true;
     try {
       await resize(target);
     } catch {
       // Keep the textarea scrollable if the native window cannot resize.
     } finally {
+      revealCaret(input);
       running = false;
       if (pending) { pending = false; schedule(); }
     }
@@ -40,4 +41,42 @@ export function createAutoSizer(input, { getMinimum, isOverlayOpen, resize, view
     timer = setTimeout(() => { void fit(); }, 50);
   }
   return { schedule, fit };
+}
+
+// setRangeText/setSelectionRange do not reliably scroll a textarea in WebViews.
+// Measure the caret with the same wrapping and typography without changing text
+// or selection. Only move enough to reveal the active line, including mid-text edits.
+export function revealCaret(input) {
+  const doc = input.ownerDocument;
+  const view = doc?.defaultView;
+  if (!view || !input.clientHeight || !input.clientWidth) return;
+  const style = view.getComputedStyle(input);
+  const mirror = doc.createElement("div");
+  for (const property of ["fontFamily", "fontSize", "fontWeight", "fontStyle", "fontVariant",
+    "lineHeight", "letterSpacing", "wordSpacing", "textIndent", "textTransform",
+    "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "tabSize", "direction"]) {
+    mirror.style[property] = style[property];
+  }
+  Object.assign(mirror.style, {
+    position: "fixed", top: "0", left: "0", visibility: "hidden", pointerEvents: "none",
+    boxSizing: "border-box", width: `${input.clientWidth}px`, whiteSpace: "pre-wrap",
+    overflowWrap: "break-word", wordBreak: style.wordBreak
+  });
+  const position = input.selectionDirection === "backward" ? input.selectionStart : input.selectionEnd;
+  mirror.textContent = input.value.slice(0, position);
+  const marker = doc.createElement("span");
+  marker.textContent = input.value.slice(position) || "\u200b";
+  mirror.append(marker);
+  doc.body.append(mirror);
+  try {
+    const rect = marker.getClientRects()[0];
+    if (!rect) return;
+    const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
+    const top = Math.max(0, rect.top - mirror.getBoundingClientRect().top - (lineHeight - rect.height) / 2);
+    const bottom = top + lineHeight + parseFloat(style.paddingBottom || "0");
+    if (top < input.scrollTop) input.scrollTop = top;
+    else if (bottom > input.scrollTop + input.clientHeight) input.scrollTop = bottom - input.clientHeight;
+  } finally {
+    mirror.remove();
+  }
 }

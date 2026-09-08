@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createAutoSizer } from "../frontend/src/autosize.js";
 
-test("editor grows for wrapped lines, caps growth, shrinks and leaves overlays alone", async () => {
+test("editor grows for wrapped lines, shrinks and leaves overlays alone", async () => {
   const input = { style: { height: "", flex: "" }, clientHeight: 148, scrollHeight: 100,
     scrollTop: 25, getBoundingClientRect: () => ({ height: 150 }) };
   let overlay = false;
@@ -16,7 +16,7 @@ test("editor grows for wrapped lines, caps growth, shrinks and leaves overlays a
   assert.equal(sizes.at(-1), 412);
   input.scrollHeight = 1500;
   await sizer.fit();
-  assert.equal(sizes.at(-1), 600);
+  assert.equal(sizes.at(-1), 1652);
   input.scrollHeight = 40;
   await sizer.fit();
   assert.equal(sizes.at(-1), 300);
@@ -32,7 +32,7 @@ test("a user-configured height above 600 is preserved and resize failures leave 
   const input = { style: { height: "", flex: "" }, clientHeight: 648, scrollHeight: 1500,
     scrollTop: 10, getBoundingClientRect: () => ({ height: 650 }) };
   const sizer = createAutoSizer(input, { getMinimum: () => 800, viewportHeight: () => 800,
-    isOverlayOpen: () => false, resize: async height => { assert.equal(height, 800); throw Error("unavailable"); } });
+    isOverlayOpen: () => false, resize: async height => { assert.equal(height, 1652); throw Error("unavailable"); } });
   await sizer.fit();
   assert.equal(input.scrollTop, 10);
   assert.deepEqual(input.style, { height: "", flex: "" });

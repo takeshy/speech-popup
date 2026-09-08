@@ -1,3 +1,4 @@
+import { trailingCommand } from "./speech_commands.js";
 import { t } from "./i18n.js";
 // Speech-to-text core, ported from gemihub-desktop's src/llm/speechTranscription.ts.
 // Everything here is pure or takes its HTTP transport as an argument, so the
@@ -52,7 +53,7 @@ export function transcriptionURL(baseUrl, endpointType = "openai", vertexProject
   if (endpointType === "vertex-transcribe") {
     const project = vertexProjectId.trim();
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(project)) {
-      throw new Error(t("Vertex AI の Google Cloud プロジェクト ID を設定してください。"));
+      throw new Error(t("Vertex AI の OAuth クライアント JSON を選択して Google に接続し、設定を保存してください。"));
     }
     return `https://aiplatform.googleapis.com/v1beta1/projects/${project}/locations/global/publishers/google/models/gemini-3.5-transcribe-preview:generateContent`;
   }
@@ -78,7 +79,7 @@ export function transcriptionURL(baseUrl, endpointType = "openai", vertexProject
 
 // speechDraft appends the transcript to whatever is already in the box and
 // reports whether the user spoke a send phrase ("over"), which copies & closes.
-export function speechDraft(base, transcript, final, sendPhrase = "over, オーバー", _afterSilence = false, normalized = false) {
+export function speechDraft(base, transcript, final, sendPhrase = "over, オーバー", _afterSilence = false, normalized = false, symbolCommands) {
   const phrases = sendPhrase.split(/[,、\n]/).map((phrase) => phrase.trim())
     .filter(Boolean).sort((a, b) => b.length - a.length);
   const pattern = phrases.map((phrase) => {
@@ -92,19 +93,38 @@ export function speechDraft(base, transcript, final, sendPhrase = "over, オー�
   const command = pattern ? new RegExp(`(?:${pattern})[\\s。．.!！?？、,،؛؟।॥]*$`, "iu") : null;
   const send = final && !!command && command.test(transcript);
   let spoken = send && command ? transcript.replace(command, "").trimEnd() : transcript;
-  if (final && !normalized) spoken = convertSpokenSymbol(spoken, !send);
+  if (final && !normalized) spoken = convertSpokenSymbol(spoken, !send, symbolCommands);
+  if (final) {
+    spoken = spoken.replace(/[。．.۔।॥։]+[ \t　]*(?=[!?！？؟])/g, "");
+    // A separately dictated mark replaces the full stop immediately before
+    // the caret too, without changing earlier sentences or crossing a newline.
+    if (/^[ \t　]*[!?！？؟]/.test(spoken) && /[。．.۔।॥։]+[ \t　]*$/.test(base)) {
+      base = base.replace(/[。．.۔।॥։]+[ \t　]*$/, "");
+      spoken = spoken.replace(/^[ \t　]+/, "");
+    }
+  }
   return {
-    text: base + (base && spoken && !/\s$/.test(base) && !/^[\s,.?!、。？！]/.test(spoken) ? " " : "") + spoken,
+    text: base + (base && spoken && !/\s$/.test(base) && !/^[\s,.?!、。？！؟]/.test(spoken) ? " " : "") + spoken,
     send
   };
 }
 
-// Only the explicit question command is converted, after recognition is final.
+// Configured symbol commands convert after recognition is final.
 // Preserve punctuation produced by the recognizer, including trailing 。 and 、.
-export function convertSpokenSymbol(text, commands = true) {
+export function convertSpokenSymbol(text, commands = true, phrases = {
+  question: "クエスチョン, クエスチョンマーク, question, question mark",
+  newline: "エンター, enter"
+}) {
   if (!commands) return text;
-  const match = /(?:クエスチョン(?:マーク)?|(?<![\p{L}\p{N}_])question(?:\s+mark)?)[\s。．.!！?？、,]*$/iu.exec(text);
-  return match ? text.slice(0, match.index).replace(/[。．. 	　]+$/, "") + "?" : text;
+  const outputs = { question: "?", newline: "\n", exclamation: "!" };
+  const matches = Object.entries(outputs)
+    .map(([key, symbol]) => ({ key, symbol, match: trailingCommand(text, phrases[key] ?? "") }))
+    .filter(entry => entry.match)
+    .sort((a, b) => a.match.index - b.match.index);
+  if (!matches.length) return text;
+  const { key, symbol, match } = matches[0];
+  const prefix = text.slice(0, match.index);
+  return prefix.replace(key === "question" || key === "exclamation" ? /[。．.۔।॥։ \t　]+$/ : /[ \t　]+$/, "") + symbol;
 }
 
 // 16 kHz mono PCM WAV also works with servers that cannot decode WebM/Opus.
