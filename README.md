@@ -212,7 +212,7 @@ npm test
 go test ./... # Linux: add -tags gtk3 when using the GTK3 dependencies
 ```
 
-Windows builds generate icon/version resources before compiling. For Store-ready MSIX packages (x64 and ARM64), configure the reserved identity and run `wails3 task windows:msix ARCH=amd64` on Windows with the Windows SDK. See [the submission guide](docs/MICROSOFT_STORE.md). GitHub Actions can build both architectures via the **Windows packages** workflow after identity variables are set.
+Windows builds generate icon/version resources before compiling. For Store-ready MSIX packages (x64 and ARM64), configure the reserved identity and run `wails3 task windows:msix ARCH=amd64` on Windows with the Windows SDK. See [the submission guide](docs/MICROSOFT_STORE.md). The **Windows packages** GitHub Actions workflow builds EXEs for both architectures. If both repository variables `MSIX_PACKAGE_NAME` and `MSIX_PUBLISHER` are set, it also creates MSIX packages; otherwise it skips MSIX packaging.
 
 The UI uses Japanese source messages with an English catalog in `frontend/src/messages.js`; `i18n.js` selects the language and interpolates data without translating it. Native messages live in `internal/i18n`. Extend both catalogs when adding languages.
 

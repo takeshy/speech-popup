@@ -271,7 +271,7 @@ wails3 task windows:msix ARCH=amd64
 wails3 task windows:msix ARCH=arm64
 ```
 
-[提出手順・審査用メモ](docs/MICROSOFT_STORE.md) を参照してください。GitHub Actions の **Windows packages** ワークフローでも生成できます。申請・公開は自動では行いません。
+[提出手順・審査用メモ](docs/MICROSOFT_STORE.md) を参照してください。GitHub Actions の **Windows packages** ワークフローは両アーキテクチャの EXE を生成します。リポジトリ変数 `MSIX_PACKAGE_NAME` と `MSIX_PUBLISHER` の両方が設定されていれば MSIX も生成し、未設定なら MSIX の生成だけをスキップします。申請・公開は自動では行いません。
 
 ### 音声で記号・改行を入力する
 

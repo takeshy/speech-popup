@@ -9,6 +9,7 @@ jobs:
   package:
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
         arch: [amd64, arm64]
     env:
@@ -26,7 +27,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not $env:MSIX_PACKAGE_NAME -or -not $env:MSIX_PUBLISHER) {
-            throw 'Set repository variables MSIX_PACKAGE_NAME and MSIX_PUBLISHER from Partner Center.'
+            Write-Host '::notice::MSIX packaging is skipped. Set repository variables MSIX_PACKAGE_NAME and MSIX_PUBLISHER from Partner Center to enable it. The EXE will still be built.'
           }
       - name: Test
         shell: pwsh
@@ -35,12 +36,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test ./...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Build MSIX
+      - name: Build Windows package
         shell: pwsh
         run: |
           go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.12
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          wails3 task windows:msix ARCH=${{ matrix.arch }}
+          if ($env:MSIX_PACKAGE_NAME -and $env:MSIX_PUBLISHER) {
+            wails3 task windows:msix ARCH=${{ matrix.arch }}
+          } else {
+            wails3 task windows:build ARCH=${{ matrix.arch }}
+          }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:

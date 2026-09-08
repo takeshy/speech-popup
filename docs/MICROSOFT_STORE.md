@@ -25,7 +25,7 @@ wails3 task windows:msix ARCH=amd64
 wails3 task windows:msix ARCH=arm64
 ```
 
-Outputs are `bin/speech-popup-windows-amd64.msix` and `bin/speech-popup-windows-arm64.msix`. The EXE is rebuilt for each architecture and includes the app icon/version resources. The `Windows packages` GitHub Actions workflow performs both builds when manually dispatched or when a `v*` tag is pushed, after the identity variables are set.
+Outputs are `bin/speech-popup-windows-amd64.msix` and `bin/speech-popup-windows-arm64.msix`. The EXE is rebuilt for each architecture and includes the app icon/version resources. The `Windows packages` GitHub Actions workflow builds EXEs for both architectures when manually dispatched or when a `v*` tag is pushed. It also builds MSIX packages when both identity variables are set; otherwise it emits a notice and skips only MSIX packaging. Invalid configured identities still fail packaging.
 
 The MSIX contains the full-trust desktop EXE, microphone/network declarations, startup task and app/Store/tile logos. The UI ships English and Japanese resources inside the frontend. Supported package languages are en-US and ja-JP.
 
@@ -59,7 +59,7 @@ Upload the MSIX packages and submit for certification in Partner Center. Account
 ## 日本語の要点
 
 1. Partner Center で **speech-popup 用の名前を予約**し、製品 ID の `Package/Identity/Name` と `Package/Identity/Publisher` を取得します。skk-popup のパッケージ名は使い回しません。
-2. `store.example.json` を `store.json` にコピーして設定します。GitHub Actions では同名のリポジトリ変数 `MSIX_PACKAGE_NAME` / `MSIX_PUBLISHER` を設定します。
+2. `store.example.json` を `store.json` にコピーして設定します。GitHub Actions では同名のリポジトリ変数 `MSIX_PACKAGE_NAME` / `MSIX_PUBLISHER` を設定します。未設定でも EXE のビルドは実行され、MSIX の生成だけがスキップされます。
 3. Windows SDK を入れた Windows で `wails3 task windows:msix ARCH=amd64` / `ARCH=arm64` を実行します。Store 提出用の未署名 MSIX が生成されます。
 4. 実機でマイク・書き起こし・貼り付け・英日 UI・自動起動を確認します。ローカルインストール検証には適切なテスト署名が必要です。
 5. 実際の Windows 画面のスクリーンショットと公開済みのプライバシーポリシー URL を用意し、英日ストア説明を入力します。
