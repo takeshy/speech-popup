@@ -10,13 +10,13 @@ Wails 製の常駐型 **音声入力ポップアップ**。ホットキーで呼
 
 ![speech-popup で音声入力する様子](docs/speech_popup.gif)
 
-[MP4 で見る](docs/speech_popup.mp4) · [ポップアップの静止画を見る](docs/speech_popup.png)
+[MP4 で見る](docs/speech_popup.mp4) · [ポップアップの静止画を見る](docs/speech_popup_ja.png)
 
 ### 設定画面
 
 <p>
-  <img src="docs/setting1.png" alt="音声入力と音声コマンドの設定" width="49%">
-  <img src="docs/setting2.png" alt="ウィンドウ、クリップボード、ホットキーの設定" width="49%">
+  <img src="docs/setting1_ja.png" alt="音声入力と音声コマンドの設定" width="49%">
+  <img src="docs/setting2_ja.png" alt="ウィンドウ、クリップボード、ホットキーの設定" width="49%">
 </p>
 
 ## 使える音声認識サービス
