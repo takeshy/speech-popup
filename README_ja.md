@@ -6,6 +6,19 @@ Wails 製の常駐型 **音声入力ポップアップ**。ホットキーで呼
 
 [skk-popup](https://github.com/takeshy/skk-popup) の常駐ポップアップ／クリップボード連携の仕組みはそのまま、入力方式を SKK から音声認識に置き換えたものです。音声認識の実装は [gemihub-desktop](https://github.com/takeshy/gemihub-desktop) の音声入力機能を移植しています。
 
+## デモ
+
+![speech-popup で音声入力する様子](docs/speech_popup.gif)
+
+[MP4 で見る](docs/speech_popup.mp4) · [ポップアップの静止画を見る](docs/speech_popup.png)
+
+### 設定画面
+
+<p>
+  <img src="docs/setting1.png" alt="音声入力と音声コマンドの設定" width="49%">
+  <img src="docs/setting2.png" alt="ウィンドウ、クリップボード、ホットキーの設定" width="49%">
+</p>
+
 ## 使える音声認識サービス
 
 既定は **ブラウザ音声認識 (`provider = "browser"`)** です。対応する WebView なら API Key や自前サーバーなしで利用できます。ただし音声認識のバックエンドを持つかは WebView 次第で、**WebKitGTK には無く、WebView2 でも動かない場合があります**。その場合はポップアップに理由と `設定を開く` ボタンが出るので、下表の録音方式へ切り替えてください。

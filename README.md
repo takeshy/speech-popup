@@ -10,6 +10,19 @@ The interface, help, settings and native tray menu support **English and Japanes
 
 This project adapts the resident popup and clipboard workflow from [skk-popup](https://github.com/takeshy/skk-popup) and speech input from [gemihub-desktop](https://github.com/takeshy/gemihub-desktop).
 
+## Demo
+
+![speech-popup while recording](docs/speech_popup.png)
+
+[Watch the MP4 demo](docs/speech_popup.mp4)
+
+### Settings
+
+<p>
+  <img src="docs/setting1.png" alt="Speech input and voice command settings" width="49%">
+  <img src="docs/setting2.png" alt="Window, clipboard, and hotkey settings" width="49%">
+</p>
+
 ## Speech services
 
 | Service | Configuration | Authentication |
