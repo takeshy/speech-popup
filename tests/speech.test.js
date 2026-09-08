@@ -331,3 +331,46 @@ test("spoken Enter inserts a line break and preserves the preceding punctuation"
   assert.equal(speechDraft("", "改行", true, "").text, "改行");
   assert.equal(speechDraft("", "new line", true, "").text, "new line");
 });
+
+
+test("Gemini empty successful responses explain that no transcript was returned", async () => {
+  for (const content of [undefined, { parts: [] }, { parts: [{}] }, { parts: [{ text: " " }] }]) {
+    await assert.rejects(() => transcribeSpeech(encodeSpeechWav(Float32Array.from([0.1])),
+      { ...baseSettings, endpointType: "gemini-transcribe", apiKey: "gem-key" },
+      async () => ({ status: 200, body: JSON.stringify({ candidates: [{ finishReason: "STOP", content }] }) }),
+      fakeSignal()), /Gemini.*Ctrl\+R/);
+  }
+});
+
+test("Gemini text can coexist with empty parts and transcription annotations", async () => {
+  const text = await transcribeSpeech(encodeSpeechWav(Float32Array.from([0.1])),
+    { ...baseSettings, endpointType: "gemini-transcribe", apiKey: "gem-key" },
+    async () => ({ status: 200, body: JSON.stringify({ candidates: [{ finishReason: "STOP", content: {
+      parts: [{}, { text: "こんにちは" }, { audioTranscription: { words: [{ word: "こんにちは" }] } }]
+    } }] }) }), fakeSignal());
+  assert.equal(text, "こんにちは");
+});
+
+test("Gemini malformed parts report the failing field without exposing response data", async () => {
+  await assert.rejects(() => transcribeSpeech(encodeSpeechWav(Float32Array.from([0.1])),
+    { ...baseSettings, endpointType: "gemini-transcribe", apiKey: "gem-key" },
+    async () => ({ status: 200, body: JSON.stringify({ candidates: [{ content: { parts: [{ text: { secret: "private" } }] } }] }) }),
+    fakeSignal()), error => {
+      assert.match(error.message, /Gemini: part.text/);
+      assert.doesNotMatch(error.message, /private/);
+      return true;
+    });
+});
+
+
+test("Gemini and Vertex accept the actual audioTranscription.text response", async () => {
+  for (const endpointType of ["gemini-transcribe", "vertex-transcribe"]) {
+    const text = await transcribeSpeech(encodeSpeechWav(Float32Array.from([0.1])),
+      { ...baseSettings, endpointType, apiKey: "gem-key", vertexProjectId: "my-project" },
+      async () => ({ status: 200, body: JSON.stringify({ candidates: [{ finishReason: "STOP", content: {
+        parts: [{ audioTranscription: { text: "Hello, this is a speech recognition test. " } },
+          { audioTranscription: { text: "The weather is sunny today." } }]
+      } }] }) }), fakeSignal());
+    assert.equal(text, "Hello, this is a speech recognition test. The weather is sunny today.");
+  }
+});

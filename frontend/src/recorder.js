@@ -25,7 +25,7 @@ export function speechSupported() {
 //   onSend(text)  -> the user spoke a send phrase: copy & close
 //   onState(s)    -> status/error/meter updates for the UI
 //   transport(request) -> the Go HTTP proxy
-export function createRecorder({ getSettings, getBase, getText, onInput, onSend, onState, transport }) {
+export function createRecorder({ getSettings, getBase, getText, onInput, onSend, onState, transport, now = () => performance.now() }) {
   let active = null;
   // Complete, independently decodable chunks, kept in order until accepted.
   let retained = [];
@@ -50,6 +50,9 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
       }
       current.stream?.getTracks().forEach(track => track.stop());
     }
+    if (current?.startedAt !== undefined && now() - current.startedAt <= 2000) {
+      retained = retained.filter(chunk => chunk.sessionId !== current.id);
+    }
     if (!preserve) retained = [];
     publish({ status: "idle", meterStream: null, silenceHint: "", retainedCount: retained.length });
   }
@@ -58,6 +61,21 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
     if (current.processing || active !== current) return;
     current.processing = true;
     try {
+      // A short automatic segment must not escape before the user has had
+      // two seconds to cancel an accidentally started recording.
+      const delay = 2001 - (now() - current.startedAt);
+      if (delay > 0) {
+        await new Promise((resolve, reject) => {
+          const signal = current.controller.signal;
+          const abort = () => { clearTimeout(timer); reject(signal.reason); };
+          const timer = setTimeout(() => {
+            signal.removeEventListener("abort", abort);
+            resolve();
+          }, delay);
+          signal.addEventListener("abort", abort, { once: true });
+          if (signal.aborted) abort();
+        });
+      }
       while (retained.length && active === current) {
         const chunk = retained[0];
         if (current.ending) publish({ status: "preparing", meterStream: null });
@@ -94,6 +112,10 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
 
   function finishRecording(current, afterSilence = false) {
     if (active !== current || current.recorder?.state !== "recording") return;
+    if (!afterSilence && now() - current.startedAt <= 2000) {
+      stop();
+      return;
+    }
     const recorder = current.recorder;
     recorder.afterSilence = afterSilence;
     current.stopSilence?.();
@@ -121,7 +143,7 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
     let size = 0;
     let heardVoice = false;
     let silenceAvailable = false;
-    const startedAt = performance.now();
+    const startedAt = now();
     recorder.ondataavailable = event => {
       if (active !== current) return;
       size += event.data.size;
@@ -142,7 +164,7 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
       const clip = new Blob(chunks, { type: recorder.mimeType });
       // Do not submit the silent tail when the user stops after a pause.
       if (clip.size && !(followsSilence && silenceAvailable && !heardVoice)) {
-        retained.push({ clip, durationMs: performance.now() - startedAt, afterSilence: recorder.afterSilence === true });
+        retained.push({ clip, sessionId: current.id, durationMs: now() - startedAt, afterSilence: recorder.afterSilence === true });
       }
       publish({ retainedCount: retained.length });
       if (current.cancelAfterStop) {
@@ -151,6 +173,7 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
       }
       await drain(current);
     };
+    current.startedAt ??= now();
     recorder.start(1000);
     if (current.settings.silenceSeconds > 0) {
       current.stopSilence = watchSpeechSilence(current.stream, current.settings.silenceSeconds,
@@ -172,7 +195,7 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
   }
 
   function newSession() {
-    return { controller: new AbortController(), recorders: new Set(), pendingCaptures: 0,
+    return { id: Symbol(), controller: new AbortController(), recorders: new Set(), pendingCaptures: 0,
       settings: { ...getSettings() } };
   }
 

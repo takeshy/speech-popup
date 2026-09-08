@@ -25,8 +25,9 @@ async function until(predicate) {
   assert.fail("UI did not reach the expected state");
 }
 
-async function setup(t, { history = [], copyFails = false, vertexClient = null, speech = {}, respond = null } = {}) {
+async function setup(t, { history = [], copyFails = false, vertexClient = null, speech = {}, respond = null, recordingStep = 3000 } = {}) {
   let microphoneRequests = 0;
+  let recordingTime = 0;
   const audioGlobals = {
     navigator: { mediaDevices: { getUserMedia: async () => {
       microphoneRequests++;
@@ -75,7 +76,7 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
           this.setSelectionRange(start + text.length, start + text.length);
         },
         addEventListener(name, callback) { handlers[name] = callback; },
-        fire(name, event = {}) { handlers[name]?.({ preventDefault() {}, ...event }); }
+        fire(name, event = {}) { if (id === "record" && name === "click") recordingTime += recordingStep; handlers[name]?.({ preventDefault() {}, ...event }); }
       });
     }
     const node = elements.get(id);
@@ -132,7 +133,7 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
     window: { go: { main: { App: app } }, runtime: {
       EventsOn(name, callback) { events[name] = callback; }
     } },
-    createRecorder, createTextEditor, createAutoSizer, speechSupported, endpointPreset, isGoogleEndpoint, validateSpeechSettings,
+    createRecorder: options => createRecorder({ ...options, now: () => recordingTime }), createTextEditor, createAutoSizer, speechSupported, endpointPreset, isGoogleEndpoint, validateSpeechSettings,
     t: translate, getLanguage, setLanguage, speechLanguageOptions, defaultSendPhrase, initialSendPhrase, sendPhraseLanguage, defaultSpeechCommands, speechCommandsFor, splitCommandPhrases,
     Option: class { constructor(text, value) { this.textContent = text; this.value = value; } },
     localizeDOM() {},
@@ -582,5 +583,34 @@ test("MAI transcription still uses its saved endpoint, key, model and language a
     const multipart = Buffer.from(request.bodyBase64, "base64").toString();
     assert.ok(multipart.includes('"model":"MAI-Transcribe-2"'));
     assert.ok(multipart.includes('"locales":["ja"]'));
+  }
+});
+
+
+test("saving Settings closes it, while validation errors leave it open", async (t) => {
+  const ui = await setup(t);
+  ui.element("menu-settings").fire("click");
+  await until(() => ui.element("cfg-speech-api-key").value === "invalid");
+  ui.element("cfg-question-phrases").value = "duplicate";
+  ui.element("cfg-newline-phrases").value = "duplicate";
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").dataset.error === "true");
+  assert.equal(ui.element("settings-overlay").dataset.open, "true");
+  ui.element("cfg-newline-phrases").value = "enter";
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-overlay").dataset.open === "false");
+});
+
+test("manual recordings stopped within two seconds are not sent", async (t) => {
+  for (const duration of [100, 1999, 2000, 2001]) {
+    await t.test(String(duration), async t => {
+      const ui = await setup(t, { recordingStep: duration, speech: { apiKey: "corrected" } });
+      ui.element("record").fire("click");
+      await until(() => ui.element("mode").dataset.recording === "true");
+      ui.element("record").fire("click");
+      await new Promise(resolve => setTimeout(resolve, 10));
+      assert.equal(ui.requests.length, duration <= 2000 ? 0 : 1);
+      assert.equal(ui.element("mode").dataset.recording, "false");
+    });
   }
 });

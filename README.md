@@ -62,7 +62,7 @@ The header displays the current transcription service. The tray menu provides Se
 
 Ctrl+K at the end of a line removes the newline and joins the next line. Editing keys match skk-popup. Ctrl+A means **start of line**; use Ctrl+O for select all.
 
-A failed transcription retains its audio for retry, including while you open Settings or correct credentials/endpoints. Switching between browser and recorded recognition discards it. Audio is kept in memory, not across app restarts. A successful transcription consumes the retained recording; copying clears the text and remaining audio.
+A failed transcription retains its audio for retry, including while you open Settings or correct credentials/endpoints. Switching between browser and recorded recognition discards it. Retry audio is kept in memory, not across app restarts. A successful transcription consumes the retained recording; copying clears the text and remaining audio.
 
 Text history keeps the latest 30 unique entries and survives restarts. When the popup reopens, it saves the previous text to history even if you never copied it, and clears the input for a new entry. Use Ctrl+↑ / Ctrl+↓ to retrieve it. External clipboard text is also captured on opening. A draft that has not yet been copied or archived is only kept in memory until exit.
 
@@ -233,6 +233,8 @@ Punctuation returned by the service, including Japanese `。` and `、`, is gene
 For recorded services, a pause splits the recording into requests; the microphone stays open while earlier requests run. Two audible samples at least 100 ms apart and no more than 300 ms apart now arm the silence timeout, instead of requiring 250 ms of uninterrupted loud audio. Submission still waits for the configured silence duration; the delay has not become zero. If an isolated word still does not produce a result, stop with Ctrl+Space to submit it explicitly and distinguish silence detection from service behavior. Recognition accuracy still depends on the service.
 
 The popup grows with line breaks and wrapped text, within the available screen height. Beyond that, the editor scrolls to keep the insertion point visible. Removing text shrinks it toward the configured height; automatic sizing does not change your saved settings.
+
+Saving settings closes the dialog on success. Recorded audio stopped within two seconds of recording starting is discarded without sending it to the recognition service. Opening Settings stops recording; closing Settings does not restart it automatically.
 
 ### GitHub Releases
 

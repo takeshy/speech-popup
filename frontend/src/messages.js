@@ -116,6 +116,7 @@ export const messages = {
   "Gemini API の API Key を設定してください。": "Set your Gemini API key.",
   "言語は auto か BCP-47 (ja / en-US など) で指定してください。": "Language must be auto or a BCP-47 tag (ja / en-US, for example).",
   "STT の Model を設定してください。": "Set the STT Model.",
+  "Gemini から認識テキストが返されませんでした。録音は保持されています。Ctrl+R で再試行できます。": "Gemini returned no transcript. Your recording is retained. Press Ctrl+R to retry.",
   "STT の応答を解釈できません。": "Cannot parse the STT response.",
   "音声がモデルにブロックされました。": "The model blocked the audio.",
   "認識結果が途中で打ち切られました。もう一度お試しください。": "The transcript was truncated. Please try again.",

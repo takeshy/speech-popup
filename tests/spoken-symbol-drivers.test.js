@@ -12,10 +12,11 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 test("recorder converts question commands on manual stop or silence, including retries", async () => {
   for (const silent of [true, false]) {
     let silence;
+    let clock = 0;
     let fail = true;
     let text = "hello";
     const create = load("recorder", {
-      t: x => x, speechDraft, AbortController, Blob, performance, setTimeout, clearTimeout,
+      t: x => x, speechDraft, AbortController, Blob, performance: { now: () => clock += 3000 }, setTimeout, clearTimeout,
       navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } },
       OfflineAudioContext: class {},
       MediaRecorder: class {
@@ -107,12 +108,13 @@ test("editing live dictation consumes displayed results so revisions cannot resu
 });
 
 test("silence converts queued utterances while the microphone and next recording stay active", async (t) => {
+  let clock = 0;
   const boundaries = [];
   const replies = [];
   let text = "";
   let streams = 0, trackStops = 0, starts = 0, requests = 0;
   const create = load("recorder", {
-    t: x => x, speechDraft, AbortController, Blob, performance, setTimeout, clearTimeout,
+    t: x => x, speechDraft, AbortController, Blob, performance: { now: () => clock += 3000 }, setTimeout, clearTimeout,
     navigator: { mediaDevices: { getUserMedia: async () => {
       streams++;
       return { getTracks: () => [{ stop() { trackStops++; } }] };
@@ -198,4 +200,45 @@ test("browser revisions preserve the suffix and cursor moves affect only new seg
   current.onresult({ results: [result("revised old result", true), result("over", true)] });
   assert.equal(sent, "left hello world right", "send at the start still copies the complete text");
   recognizer.stop();
+});
+
+
+test("stopping within two seconds also cancels an automatic segment waiting to send", async () => {
+  let clock = 0, silence, requests = 0;
+  const create = load("recorder", {
+    t: x => x, speechDraft, AbortController, Blob, performance: { now: () => clock }, setTimeout, clearTimeout,
+    navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } },
+    OfflineAudioContext: class {},
+    MediaRecorder: class {
+      static isTypeSupported() { return true; }
+      state = "inactive";
+      start() { this.state = "recording"; }
+      stop() {
+        this.state = "inactive";
+        queueMicrotask(() => {
+          this.ondataavailable?.({ data: new Blob(["audio"]) });
+          void this.onstop?.();
+        });
+      }
+    },
+    validateSpeechSettings() {}, recordingsToWav: async () => new Blob(["wav"]),
+    transcribeSpeech: async () => { requests++; return "text"; },
+    watchSpeechSilence: (_stream, _seconds, callback, status) => { silence = callback; status(true); return () => {}; }
+  }, "createRecorder");
+  const recorder = create({ getSettings: () => ({ silenceSeconds: 1, sendPhrase: "" }),
+    getBase: () => "", onInput() { assert.fail("unexpected transcript"); }, onSend() {}, onState() {} });
+  try {
+    await recorder.toggle();
+    clock = 1100;
+    silence();
+    await tick();
+    assert.equal(requests, 0);
+    assert.equal(recorder.state().retainedCount, 1);
+    clock = 2000;
+    await recorder.toggle();
+    await tick();
+    assert.equal(requests, 0);
+    assert.equal(recorder.state().retainedCount, 0);
+    assert.equal(recorder.busy(), false);
+  } finally { recorder.discard(); }
 });

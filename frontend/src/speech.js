@@ -239,27 +239,39 @@ function bytesToBase64(bytes) {
 }
 
 function geminiTranscript(result) {
-  const invalid = () => new Error(t("STT の応答を解釈できません。"));
-  if (!result || typeof result !== "object" || Array.isArray(result) || "error" in result) throw invalid();
+  const invalid = (field) => new Error(`${t("STT の応答を解釈できません。")} (Gemini: ${field})`);
+  const empty = () => new Error(t("Gemini から認識テキストが返されませんでした。録音は保持されています。Ctrl+R で再試行できます。"));
+  if (!result || typeof result !== "object" || Array.isArray(result) || "error" in result) throw invalid("response");
   if (result.promptFeedback && typeof result.promptFeedback === "object" && "blockReason" in result.promptFeedback) {
     throw new Error(t("音声がモデルにブロックされました。"));
   }
-  if (!Array.isArray(result.candidates) || !result.candidates.length) throw invalid();
+  if (!Array.isArray(result.candidates) || !result.candidates.length) throw invalid("candidates");
   const candidate = result.candidates[0];
-  if (!candidate || typeof candidate !== "object") throw invalid();
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) throw invalid("candidate");
   // Never insert a partial transcript (including a partial send command).
   if (candidate.finishReason && candidate.finishReason !== "STOP") {
     throw new Error(t("認識結果が途中で打ち切られました。もう一度お試しください。"));
   }
   const parts = candidate.content?.parts;
-  if (parts === undefined && candidate.finishReason === "STOP") return "";
-  if (!Array.isArray(parts)) throw invalid();
-  return parts.map((part) => {
-    if (!part || typeof part !== "object") throw invalid();
+  if (parts === undefined && candidate.finishReason === "STOP") throw empty();
+  if (!Array.isArray(parts)) throw invalid("parts");
+  const text = parts.map((part) => {
+    if (!part || typeof part !== "object" || Array.isArray(part)) throw invalid("part");
     if (part.thought === true) return "";
-    if (typeof part.text !== "string") throw invalid();
+    // Gemini Transcribe can return the transcript in audioTranscription.text
+    // instead of the ordinary generateContent text field.
+    if (part.text === undefined && part.audioTranscription?.text !== undefined) {
+      if (typeof part.audioTranscription.text !== "string") throw invalid("audioTranscription.text");
+      return part.audioTranscription.text;
+    }
+    // Empty protobuf parts and word-only annotations carry no transcript text.
+    if (part.text === undefined && Object.keys(part).every(key =>
+      ["audioTranscription", "thoughtSignature", "thought"].includes(key))) return "";
+    if (typeof part.text !== "string") throw invalid("part.text");
     return part.text;
   }).join("").trim();
+  if (!text) throw empty();
+  return text;
 }
 
 // transcribeSpeech POSTs the recording through transport (the Go HTTP proxy,

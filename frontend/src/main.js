@@ -857,6 +857,8 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       startupWarning = appInfo?.hotkeyError ?? "";
       renderSettingsInfo();
       setSettingsStatus(result?.warning ? t("保存しました。{0}", result.warning) : t("保存しました。"), !!result?.warning);
+      closeSettings();
+      if (result?.warning) setError(result.warning);
     } catch (caught) {
       setSettingsStatus(message(caught), true);
     }
