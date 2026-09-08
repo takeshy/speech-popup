@@ -169,3 +169,28 @@ func TestServiceProfilesRoundTripAndIsolation(t *testing.T) {
 		t.Fatal("views share mutable profile storage")
 	}
 }
+
+func TestSendPhraseProfilesRoundTripAndIsolation(t *testing.T) {
+	v := ToView(Default())
+	v.Speech.SendPhraseProfiles = map[string]string{
+		"fr": "envoyer maintenant", "de": "", "ja": "送信, オーバー", "zh-Hant": "發送",
+		"ar": "إرسال", "hi": "भेजो", "en": "done\nwith\tquotes\"#",
+	}
+	cfg, err := FromView(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := t.TempDir() + "/config.toml"
+	if err := Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	got := ToView(LoadFrom(path))
+	if !reflect.DeepEqual(got.Speech.SendPhraseProfiles, v.Speech.SendPhraseProfiles) {
+		t.Fatalf("send phrase profiles changed: %+v", got.Speech.SendPhraseProfiles)
+	}
+	delete(v.Speech.SendPhraseProfiles, "fr")
+	delete(got.Speech.SendPhraseProfiles, "ja")
+	if len(cfg.Speech.SendPhraseProfiles) != 7 {
+		t.Fatal("views share mutable send phrase storage")
+	}
+}

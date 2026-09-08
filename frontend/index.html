@@ -64,6 +64,14 @@
       </div>
       <p id="settings-status" class="settings-status" aria-live="polite"></p>
       <div class="settings-body">
+        <div class="field-row">
+          <label>表示言語
+            <select id="cfg-ui-language">
+              <option value="en">English</option>
+              <option value="ja">日本語</option>
+            </select>
+          </label>
+        </div>
         <h3>音声入力</h3>
         <div class="field-row">
           <label>方式
@@ -102,14 +110,20 @@
           <button id="vertex-disconnect" type="button">接続を解除</button>
         </div>
         <div class="field-row">
-          <label>言語 <input id="cfg-speech-language" type="text" placeholder="auto" spellcheck="false"></label>
+          <label>聞き取り言語 <select id="cfg-speech-language" aria-describedby="speech-language-note"></select></label>
+          <label id="speech-language-custom-row" hidden>言語コード
+            <input id="cfg-speech-language-custom" type="text" placeholder="fr-CA" spellcheck="false" pattern="[A-Za-z]{2,3}(-[A-Za-z0-9]+)*" disabled>
+          </label>
           <label>発話を区切る無音 (秒) <input id="cfg-speech-silence" type="number" min="0" max="10" step="1"></label>
           <label class="check"><input id="cfg-speech-auto-start" type="checkbox"> ポップアップを開いたら自動で録音を開始する</label>
         </div>
         <div class="field-row">
-          <label class="wide">コピーして閉じる合図の言葉 (カンマ区切り) <input id="cfg-speech-send-phrase" type="text" placeholder="over, オーバー" spellcheck="false"></label>
+          <label class="wide">コピーして閉じる合図の言葉 (カンマ区切り) <input id="cfg-speech-send-phrase" type="text" spellcheck="false"></label>
+          <button id="speech-send-phrase-reset" type="button">この言語の初期値に戻す</button>
         </div>
-        <p class="settings-note">無音後の発話末尾で、てん → 、 / まる → 。 / はてな → ? / 改行・エンター → 改行。0 秒では無効です。</p>
+        <p class="settings-note">合図は聞き取り言語に合わせて切り替わります。編集した合図も言語ごとに保存されます。空欄で無効になります。</p>
+        <p id="speech-language-note" class="settings-note"></p>
+        <p class="settings-note">句読点は認識結果のまま残します。末尾のクエスチョン／クエスチョンマーク／question（mark）だけを ? に変換します。</p>
         <p class="settings-note">API Key は config.toml に平文で保存されます (ファイルは 0600 で書き込まれます)。</p>
         <h3>ウィンドウ</h3>
         <div class="field-row">

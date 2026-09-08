@@ -19,12 +19,13 @@ export function speechSupported() {
 
 // createRecorder wires the microphone to the STT transport.
 //   getSettings() -> the speech settings in effect right now
-//   getBase()     -> the text already in the box, which the transcript extends
-//   onInput(text) -> replace the box contents
+//   getBase()     -> the prefix before the insertion point
+//   onInput(text) -> update that prefix, preserving the suffix
+//   getText()     -> the complete editor contents, for copy & close
 //   onSend(text)  -> the user spoke a send phrase: copy & close
 //   onState(s)    -> status/error/meter updates for the UI
 //   transport(request) -> the Go HTTP proxy
-export function createRecorder({ getSettings, getBase, onInput, onSend, onState, transport }) {
+export function createRecorder({ getSettings, getBase, getText, onInput, onSend, onState, transport }) {
   let active = null;
   // Complete, independently decodable chunks, kept in order until accepted.
   let retained = [];
@@ -70,9 +71,10 @@ export function createRecorder({ getSettings, getBase, onInput, onSend, onState,
         retained.shift();
         publish({ retainedCount: retained.length });
         onInput(draft.text);
-        if (draft.send && draft.text.trim()) {
+        const text = getText?.() ?? draft.text;
+        if (draft.send && text.trim()) {
           stop(false);
-          onSend(draft.text);
+          onSend(text);
           return;
         }
       }

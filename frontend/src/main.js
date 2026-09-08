@@ -1,7 +1,9 @@
-import { t, getLanguage, localizeDOM } from "./i18n.js";
+import { t, getLanguage, setLanguage, localizeDOM } from "./i18n.js";
 // speech-popup UI: a resident popup that records speech, transcribes it, and
 // puts the result on the clipboard for the window that had focus before.
 
+import { defaultSendPhrase, initialSendPhrase, sendPhraseLanguage } from "./send_phrases.js";
+import { speechLanguageOptions } from "./speech_languages.js";
 import { createRecorder, speechSupported } from "./recorder.js";
 import { browserSpeechSupported, createBrowserRecognizer } from "./browser_speech.js";
 import { createAudioMeter } from "./meter.js";
@@ -76,20 +78,20 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     hotkeyAccelerator: document.getElementById("cfg-hotkey-accelerator")
   };
 
-  const HELP_TEXT = [
+  const helpText = () => [
     t("── 録音 ──"),
     t("Ctrl+Space / ● 録音   録音の開始・停止 (停止すると認識が走る)"),
     t("無音で発話を区切って変換 (録音は継続。Ctrl+Space で停止)"),
     t("録音は最長 5 分。20MB を超えると停止します"),
     t("Ctrl+R / 再認識       保持している録音をもう一度サーバーへ送る"),
     t("Ctrl+D                保持している録音を破棄する"),
-    t("合図の言葉 (既定 over / オーバー) を最後に話すと、その語を除いてコピーして閉じる"),
+    t("設定した合図の言葉を最後に話すと、その語を除いてコピーして閉じる"),
     "",
     t("── 編集 ──"),
     t("認識結果はそのまま編集できます (通常のテキストエリア)"),
     t("Enter                 コピーして閉じる"),
     t("Shift+Enter           改行"),
-    t("音声コマンド: てん → 、 / まる → 。 / はてな → ? / 改行・エンター → 改行 (無音設定が必要)"),
+    t("認識結果の句読点はそのまま使用。発話末尾のクエスチョン → ?（認識確定時）"),
     t("Ctrl+A / Ctrl+E       行頭 / 行末"),
     t("Ctrl+B / Ctrl+F       1文字左 / 右"),
     t("Ctrl+K / Ctrl+U       行末まで削除 / 行頭まで削除"),
@@ -106,7 +108,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   ].join("\n");
 
   const HISTORY_LIMIT = 30;
-  const IDLE_STATUS = t("Ctrl+Space: 録音 / Enter: コピーして閉じる");
+  const idleStatus = () => t("Ctrl+Space: 録音 / Enter: コピーして閉じる");
 
   let config = null;
   let history = [];
@@ -242,7 +244,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
 
   function refreshStatus() {
     if (stickyStatus) return;
-    statusEl.textContent = IDLE_STATUS;
+    statusEl.textContent = idleStatus();
   }
 
   // ---- speech engine ------------------------------------------------------
@@ -273,7 +275,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       model: speech.model ?? "",
       language: speech.language ?? "auto",
       silenceSeconds: speech.silenceSeconds ?? 0,
-      sendPhrase: speech.sendPhrase ?? "",
+      sendPhrase: initialSendPhrase(speech),
       vertexProjectId: speech.vertexProjectId ?? ""
     };
   }
@@ -286,10 +288,11 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     engine?.discard();
     const options = {
       getSettings: speechSettings,
-      getBase: () => inputEl.value,
+      getBase: editor.speechBase,
+      getContext: editor.speechContext,
+      getText: () => inputEl.value,
       onInput: (text) => {
-        setText(text);
-        inputEl.scrollTop = inputEl.scrollHeight;
+        editor.applySpeechPrefix(text);
         historyIndex = -1;
       },
       onSend: (text) => void copyAndClose(text),
@@ -315,14 +318,18 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     return engine;
   }
 
-  const ACTIVITY_TITLES = {
+  const activityTitles = () => ({
     starting: t("マイクを準備しています"),
     recording: t("録音中"),
     preparing: t("音声を変換しています"),
     transcribing: t("認識しています")
-  };
+  });
+
+  let lastEngineState = null;
 
   function renderEngineState(state) {
+    lastEngineState = state;
+    const ACTIVITY_TITLES = activityTitles();
     const active = state.status !== "idle";
     activityEl.dataset.active = String(active);
     modeEl.textContent = active ? (ACTIVITY_TITLES[state.status] ?? t("処理中")) : t("待機中");
@@ -371,7 +378,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     startupWarning = "";
     configurationError = false;
     setError("");
-    setStatus(IDLE_STATUS);
+    setStatus(idleStatus());
     const settings = speechSettings();
     if (settings.provider === "browser") {
       if (!browserSpeechSupported()) {
@@ -472,7 +479,6 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
 
   function focusInput() {
     inputEl.focus();
-    inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
   }
 
   // ---- menu / overlays ----------------------------------------------------
@@ -493,7 +499,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   }
 
   function openHelp() {
-    helpBodyEl.textContent = HELP_TEXT;
+    helpBodyEl.textContent = helpText();
     helpOverlay.dataset.open = "true";
     setOverlayOpen(true);
     helpOverlay.focus();
@@ -525,6 +531,8 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
 
   let serviceProfiles = {};
   let formEndpoint = "";
+  let sendPhraseProfiles = {};
+  let formPhraseLanguage = "";
 
   function rememberService() {
     if (!formEndpoint) return;
@@ -532,12 +540,13 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       baseUrl: cfgFields.speechBaseUrl.value.trim(),
       apiKey: cfgFields.speechApiKey.value.trim(),
       model: cfgFields.speechModel.value.trim(),
-      language: cfgFields.speechLanguage.value.trim() || "auto",
+      language: readSpeechLanguage(),
       vertexProjectId: cfgFields.speechVertexProject.value.trim()
     };
   }
 
   function fillSettingsForm(view) {
+    document.getElementById("cfg-ui-language").value = view.uiLanguage || getLanguage();
     serviceProfiles = structuredClone(view.speech.profiles ?? {});
     formEndpoint = view.speech.endpointType;
     renderSpeechProvider();
@@ -546,9 +555,11 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     cfgFields.speechBaseUrl.value = view.speech.baseUrl;
     cfgFields.speechApiKey.value = view.speech.apiKey;
     cfgFields.speechModel.value = view.speech.model;
-    cfgFields.speechLanguage.value = view.speech.language;
+    renderSpeechLanguages(view.speech.language || "auto");
     cfgFields.speechSilence.value = String(view.speech.silenceSeconds);
-    cfgFields.speechSendPhrase.value = view.speech.sendPhrase;
+    sendPhraseProfiles = structuredClone(view.speech.sendPhraseProfiles ?? {});
+    formPhraseLanguage = sendPhraseLanguage(view.speech.language);
+    cfgFields.speechSendPhrase.value = initialSendPhrase(view.speech);
     cfgFields.speechVertexProject.value = view.speech.vertexProjectId;
     cfgFields.speechAutoStart.checked = view.speech.autoStart;
     cfgFields.windowWidth.value = String(view.window.width);
@@ -564,9 +575,47 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     updateHotkeyGuidance();
   }
 
+  function readSpeechLanguage() {
+    return cfgFields.speechLanguage.value === "custom"
+      ? document.getElementById("cfg-speech-language-custom").value.trim()
+      : cfgFields.speechLanguage.value || "auto";
+  }
+
+  function updateCustomSpeechLanguage() {
+    const custom = cfgFields.speechLanguage.value === "custom";
+    const input = document.getElementById("cfg-speech-language-custom");
+    document.getElementById("speech-language-custom-row").hidden = !custom;
+    input.disabled = !custom;
+    input.required = custom;
+  }
+
+  function renderSpeechLanguages(current = readSpeechLanguage()) {
+    const custom = cfgFields.speechLanguage.value === "custom";
+    const options = speechLanguageOptions(
+      cfgFields.speechProvider.value, cfgFields.speechEndpoint.value,
+      cfgFields.speechModel.value, current
+    );
+    cfgFields.speechLanguage.replaceChildren(...options.map(({ value, label }) => new Option(label, value)));
+    cfgFields.speechLanguage.value = current || "auto";
+    if (!current && custom) cfgFields.speechLanguage.value = "custom";
+    updateCustomSpeechLanguage();
+    document.getElementById("speech-language-note").textContent =
+      cfgFields.speechProvider.value === "browser" || ["custom", "whisper-cpp"].includes(cfgFields.speechEndpoint.value)
+        ? t("利用できる言語は接続先やモデルに依存します。一覧にない言語は「その他」で指定できます。")
+        : t("言語はサービスごとに保存されます。一覧にない言語は「その他」で指定できます。");
+  }
+
+  function switchSendPhraseLanguage() {
+    if (formPhraseLanguage) sendPhraseProfiles[formPhraseLanguage] = cfgFields.speechSendPhrase.value;
+    formPhraseLanguage = sendPhraseLanguage(readSpeechLanguage());
+    cfgFields.speechSendPhrase.value = sendPhraseProfiles[formPhraseLanguage] ?? defaultSendPhrase(formPhraseLanguage);
+  }
+
   function readSettingsForm() {
     rememberService();
+    switchSendPhraseLanguage();
     return {
+      uiLanguage: document.getElementById("cfg-ui-language").value,
       speech: {
         profiles: structuredClone(serviceProfiles),
         provider: cfgFields.speechProvider.value,
@@ -574,9 +623,10 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
         baseUrl: cfgFields.speechBaseUrl.value.trim(),
         apiKey: cfgFields.speechApiKey.value.trim(),
         model: cfgFields.speechModel.value.trim(),
-        language: cfgFields.speechLanguage.value.trim() || "auto",
+        language: readSpeechLanguage(),
         silenceSeconds: Number(cfgFields.speechSilence.value),
         sendPhrase: cfgFields.speechSendPhrase.value,
+        sendPhraseProfiles: structuredClone(sendPhraseProfiles),
         vertexProjectId: cfgFields.speechVertexProject.value.trim(),
         autoStart: cfgFields.speechAutoStart.checked
       },
@@ -601,6 +651,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   // Only the fields the selected service actually uses stay visible, so a
   // stale Base URL or key cannot look as if it applies to Gemini or Vertex.
   function updateSpeechFieldVisibility() {
+    renderSpeechLanguages();
     const browser = cfgFields.speechProvider.value === "browser";
     const endpointType = cfgFields.speechEndpoint.value;
     const google = isGoogleEndpoint(endpointType);
@@ -622,7 +673,8 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     cfgFields.speechBaseUrl.value = preset.baseUrl;
     cfgFields.speechModel.value = preset.model;
     cfgFields.speechApiKey.value = preset.apiKey ?? "";
-    cfgFields.speechLanguage.value = preset.language ?? "auto";
+    renderSpeechLanguages(preset.language ?? "auto");
+    switchSendPhraseLanguage();
     cfgFields.speechVertexProject.value = preset.vertexProjectId ?? "";
     updateSpeechFieldVisibility();
   }
@@ -741,11 +793,24 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     focusInput();
   }
 
+  async function applyUILanguage(language) {
+    setLanguage(language || getLanguage());
+    localizeDOM(document);
+    await appBinding()?.SetUILanguage?.(getLanguage());
+    helpBodyEl.textContent = helpText();
+    if (lastEngineState) renderEngineState(lastEngineState);
+    renderSpeechProvider();
+    updateHotkeyGuidance();
+    updateSpeechFieldVisibility();
+    renderSettingsInfo();
+  }
+
   async function saveSettings() {
     const view = readSettingsForm();
     try {
       const result = await appBinding()?.SaveConfig(view);
       config = await appBinding()?.LoadConfig();
+      await applyUILanguage(config?.uiLanguage || view.uiLanguage);
       // HTTP engines read settings for every retry, so changing credentials
       // or endpoints must leave the retained recording available.
       if (engine && engineProvider !== speechSettings().provider) {
@@ -818,6 +883,16 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   });
   cfgFields.speechProvider.addEventListener("change", updateSpeechFieldVisibility);
   cfgFields.speechEndpoint.addEventListener("change", applyEndpointPreset);
+  cfgFields.speechModel.addEventListener("change", () => renderSpeechLanguages());
+  cfgFields.speechLanguage.addEventListener("change", () => {
+    updateCustomSpeechLanguage();
+    if (cfgFields.speechLanguage.value === "custom") document.getElementById("cfg-speech-language-custom").focus();
+    else switchSendPhraseLanguage();
+  });
+  document.getElementById("cfg-speech-language-custom").addEventListener("change", switchSendPhraseLanguage);
+  document.getElementById("speech-send-phrase-reset").addEventListener("click", () => {
+    cfgFields.speechSendPhrase.value = defaultSendPhrase(readSpeechLanguage());
+  });
   cfgFields.hotkeyAccelerator.addEventListener("input", updateHotkeyGuidance);
   hotkeyCopyBindButton.addEventListener("click", () => {
     const line = hotkeyBindLineEl.textContent;
@@ -899,7 +974,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
 
   async function boot() {
     localizeDOM(document);
-    setStatus(IDLE_STATUS);
+    setStatus(idleStatus());
     try {
       await waitForWailsRuntime();
     } catch {
@@ -910,6 +985,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     await app.SetUILanguage?.(getLanguage());
     try {
       config = await app.LoadConfig();
+      await applyUILanguage(config?.uiLanguage);
     } catch (caught) {
       setError(t("設定を読み込めません: {0}", message(caught)));
     }

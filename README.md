@@ -6,7 +6,7 @@ A resident voice dictation popup built with Wails. Press a hotkey, speak, edit t
 
 ![speech-popup icon](build/windows/msix/Assets/Square150x150Logo.png)
 
-The interface, help, settings and native tray menu support **English and Japanese**. Japanese is selected for a Japanese WebView/OS language; other languages use English. The speech recognition language is a separate setting.
+The interface, help, settings and native tray menu support **English and Japanese**. Choose **Display language → English / 日本語** in Settings and save to apply it immediately. Before a language is saved, the initial selection follows the WebView language (Japanese for Japanese locales, English otherwise). The speech recognition language is a separate setting.
 
 This project adapts the resident popup and clipboard workflow from [skk-popup](https://github.com/takeshy/skk-popup) and speech input from [gemihub-desktop](https://github.com/takeshy/gemihub-desktop).
 
@@ -38,7 +38,7 @@ Recording-based services receive 16 kHz mono WAV audio through the Go backend, a
 2. Press **Ctrl+8** (Windows default), or choose Open speech input from the tray menu.
 3. Speak. Recording starts on opening by default. Pauses segment speech for transcription while recording continues. Ctrl+Space stops recording.
 4. Edit the resulting text, then press **Enter** to copy, close and paste into the previous window.
-5. Alternatively, end with a configured send phrase (default: `over`, `オーバー`) to remove that phrase and copy/close automatically.
+5. Alternatively, end with a configured send phrase (defaults follow the speech language, such as `over` for English) to remove that phrase and copy/close automatically.
 
 The header displays the current transcription service. The tray menu provides Settings, Help and Quit even if the hotkey fails.
 
@@ -128,7 +128,13 @@ accelerator = "Ctrl+8"
 
 ### Remembered service settings
 
-Settings remembers each service's **Base URL, API Key, Model, language, and Vertex project ID**. Switching services restores its previous values; a service used for the first time starts with its defaults and an empty key. Choose **Save** to persist all service profiles in `config.toml` across app restarts. Closing without saving discards edits. Silence duration, send phrases, and automatic recording remain shared settings.
+Settings remembers each service's **Base URL, API Key, Model, language, and Vertex project ID**. Switching services restores its previous values; a service used for the first time starts with its defaults and an empty key. Choose **Save** to persist all service profiles in `config.toml` across app restarts. Closing without saving discards edits. Silence duration and automatic recording remain shared settings.
+
+**Speech language** is a dropdown with service-specific codes and native language names alongside the UI language. OpenAI uses the documented Whisper language suggestions, whisper.cpp uses its language catalog, Gemini/Vertex use regional codes, and Azure MAI uses its model's language list. Browser and self-hosted support depends on the installed engine/model. Choose **Other (language code)** for unlisted languages; existing codes are preserved. Automatic detection remains available for HTTP services; the browser option uses the WebView language.
+
+**Send phrases** follow the speech language: for example, English uses `over`, French `terminé`, and German `fertig`. You can edit the comma-separated phrases, leave the field empty to disable them, or choose **Reset to this language's default**. Edits are remembered per language (shared across services and regional variants; Traditional Chinese is separate) and persisted on **Save**. Existing customized phrases are retained for the currently selected language. With automatic language detection selected, phrase defaults follow the WebView's preferred language; they do not change based on each transcript.
+
+The language catalogs in `frontend/src/speech_languages.js` were checked against [official OpenAI documentation](https://developers.openai.com/api/docs/guides/text-to-speech#supported-languages), [whisper.cpp](https://github.com/ggml-org/whisper.cpp/blob/master/src/whisper.cpp), [Gemini](https://ai.google.dev/gemini-api/docs/transcribe#supported-languages), [Vertex](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-5-transcribe), and [Azure MAI](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/mai-transcribe#language-support).
 
 ### Local whisper.cpp
 
@@ -159,7 +165,7 @@ Enter the base endpoint without an API path or query string. The app adds the [M
 - **No speech was recognized:** the service returned an empty transcript. This does not by itself mean the language setting is wrong. Check that the microphone meter moves while speaking. Set **Pause between utterances (seconds)** to **0**, save, record about five seconds of speech, then stop manually with Ctrl+Space to test without automatic segmentation.
 - **Retrying after a settings change:** Ctrl+R resends the retained audio with the saved settings. Changing the silence duration does not re-segment retained audio. To test a fresh recording, discard the retained audio with Ctrl+D first if you no longer need it.
 
-Once manual recording works, try a pause of about **3 seconds** if you want automatic segmentation. A value of 0 disables spoken punctuation/line-break conversion as well as automatic segmentation.
+Once manual recording works, try a pause of about **3 seconds** if you want automatic segmentation. A value of 0 disables automatic segmentation; question-command conversion still works when you stop recording manually.
 
 ### Vertex AI
 
@@ -216,23 +222,13 @@ Windows builds generate icon/version resources before compiling. For Store-ready
 
 The UI uses Japanese source messages with an English catalog in `frontend/src/messages.js`; `i18n.js` selects the language and interpolates data without translating it. Native messages live in `internal/i18n`. Extend both catalogs when adding languages.
 
-### Spoken punctuation and line breaks
+### Dictation position and punctuation
 
-Set **Pause between utterances (seconds)** to at least 1 (0 disables this feature). Pauses split audio into chunks for ordered transcription and trailing command conversion. The microphone stays open and the next chunk records while the previous request runs. Stop recording with Ctrl+Space or the record button. Browser recognition converts final segments after microphone silence; it requires microphone metering. Manual stop alone does not trigger conversion. Failed recordings preserve this behavior when retried.
+Recognition inserts at the current caret, or replaces the selected text, while preserving the text after it. Moving the caret during recording changes where the next result is inserted. Undo restores the text and selection. Browser interim results can be revised in place; moving the caret commits what is already displayed, and new recognition segments use the new position.
 
-| Spoken name | Inserted text |
-| --- | --- |
-| てん / 点 / 読点 | 、 |
-| まる / 丸 / 句点 | 。 |
-| comma / カンマ / コンマ | , |
-| period / full stop / ピリオド | . |
-| question / question mark / クエスチョンマーク / クエスチョン / はてな | ? |
-| exclamation / exclamation mark / エクスクラメーション / エクスクラメーションマーク / びっくりマーク | ! |
-| new line / newline / Enter / 改行 / エンター | Line break |
+Punctuation returned by the service, including Japanese `。` and `、`, is preserved. Only a trailing `question`, `question mark`, `クエスチョン`, or `クエスチョンマーク` becomes `?` when recognition is final. This also works on manual stop and with **Pause between utterances** set to 0. Other former punctuation/line-break commands are treated as ordinary text. Use Shift+Enter for a line break. The copy-and-close send phrase remains available.
 
-Only the trailing name is converted, not commands in the middle of a sentence. Short Japanese names (てん / まる / 点 / 丸) must be recognized as separate words, preceded by whitespace/punctuation or at the start of a segment, to avoid changing words such as 始まる. A spoken line break inserts a newline in the editor; it does not copy or submit. The existing send phrase takes precedence. Recognition accuracy depends on the selected service.
-
-Final recognition results omit an automatic trailing Japanese full stop (`。`). Internal sentence boundaries remain. Say `まる` after silence to insert an explicit `。`. A redundant `。` before `、` is removed, including when the comma is dictated in a later recording.
+For recorded services, a pause splits the recording into requests; the microphone stays open while earlier requests run. Two audible samples at least 100 ms apart and no more than 300 ms apart now arm the silence timeout, instead of requiring 250 ms of uninterrupted loud audio. Submission still waits for the configured silence duration; the delay has not become zero. If an isolated word still does not produce a result, stop with Ctrl+Space to submit it explicitly and distinguish silence detection from service behavior. Recognition accuracy still depends on the service.
 
 The popup grows with line breaks and wrapped text, up to 600 px tall (or your configured height if larger), within the available screen height. Beyond that, the editor scrolls. Removing text shrinks it toward the configured height; automatic sizing does not change your saved settings.
 
@@ -240,4 +236,4 @@ The popup grows with line breaks and wrapped text, up to 600 px tall (or your co
 
 Pushing a `vMAJOR.MINOR.PATCH` tag runs the **Release** workflow, following the same process as skk-popup. It builds Linux amd64/arm64, macOS arm64, and Windows amd64/arm64 binaries. Windows MSIX packages are included when both Store identity variables are configured. After all builds succeed, the workflow creates a **draft GitHub Release** with the binaries, packages, and generated release notes. Publish the draft when ready; this does not submit anything to Microsoft Store.
 
-For an existing tag, run **Actions → Release → Run workflow** on `main` and enter the tag (for example, `v0.2.0`). The workflow builds that tag's source, verifies its version against `wails.json`, and attaches the assets to that tag. The separate **Windows packages** workflow remains available for manual Windows-only builds and uploads Actions artifacts without creating a Release.
+For an existing tag, run **Actions → Release → Run workflow** on `main` and enter the tag (for example, `v0.3.0`). The workflow builds that tag's source, verifies its version against `wails.json`, and attaches the assets to that tag. The separate **Windows packages** workflow remains available for manual Windows-only builds and uploads Actions artifacts without creating a Release.

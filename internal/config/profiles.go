@@ -69,3 +69,33 @@ func (s *SpeechConfig) marshalProfiles(b *strings.Builder) {
 		fmt.Fprintf(b, "base_url = %s\napi_key = %s\nmodel = %s\nlanguage = %s\nvertex_project_id = %s\n", quote(p.BaseURL), quote(p.APIKey), quote(p.Model), quote(p.Language), quote(p.VertexProjectID))
 	}
 }
+
+// Language keys are validated before they become bare TOML keys.
+func cloneSendPhrases(profiles map[string]string) map[string]string {
+	if len(profiles) == 0 {
+		return nil
+	}
+	result := make(map[string]string)
+	for language, phrase := range profiles {
+		if languagePattern.MatchString(language) {
+			result[language] = phrase
+		}
+	}
+	return result
+}
+
+func (s *SpeechConfig) marshalSendPhrases(b *strings.Builder) {
+	profiles := cloneSendPhrases(s.SendPhraseProfiles)
+	if len(profiles) == 0 {
+		return
+	}
+	names := make([]string, 0, len(profiles))
+	for language := range profiles {
+		names = append(names, language)
+	}
+	sort.Strings(names)
+	b.WriteString("\n[speech.send_phrases]\n")
+	for _, language := range names {
+		fmt.Fprintf(b, "%s = %s\n", language, quote(profiles[language]))
+	}
+}

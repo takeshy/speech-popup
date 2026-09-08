@@ -15,10 +15,11 @@ import (
 
 // View mirrors Config with JSON names for the frontend.
 type View struct {
-	Window    WindowView    `json:"window"`
-	Speech    SpeechView    `json:"speech"`
-	Clipboard ClipboardView `json:"clipboard"`
-	Hotkey    HotkeyView    `json:"hotkey"`
+	UILanguage string        `json:"uiLanguage"`
+	Window     WindowView    `json:"window"`
+	Speech     SpeechView    `json:"speech"`
+	Clipboard  ClipboardView `json:"clipboard"`
+	Hotkey     HotkeyView    `json:"hotkey"`
 }
 
 type WindowView struct {
@@ -40,22 +41,24 @@ type HotkeyView struct {
 }
 
 type SpeechView struct {
-	Profiles        map[string]SpeechProfile `json:"profiles,omitempty"`
-	Provider        string                   `json:"provider"`
-	EndpointType    string                   `json:"endpointType"`
-	BaseURL         string                   `json:"baseUrl"`
-	APIKey          string                   `json:"apiKey"`
-	Model           string                   `json:"model"`
-	Language        string                   `json:"language"`
-	SilenceSeconds  int                      `json:"silenceSeconds"`
-	SendPhrase      string                   `json:"sendPhrase"`
-	VertexProjectID string                   `json:"vertexProjectId"`
-	AutoStart       bool                     `json:"autoStart"`
+	SendPhraseProfiles map[string]string        `json:"sendPhraseProfiles,omitempty"`
+	Profiles           map[string]SpeechProfile `json:"profiles,omitempty"`
+	Provider           string                   `json:"provider"`
+	EndpointType       string                   `json:"endpointType"`
+	BaseURL            string                   `json:"baseUrl"`
+	APIKey             string                   `json:"apiKey"`
+	Model              string                   `json:"model"`
+	Language           string                   `json:"language"`
+	SilenceSeconds     int                      `json:"silenceSeconds"`
+	SendPhrase         string                   `json:"sendPhrase"`
+	VertexProjectID    string                   `json:"vertexProjectId"`
+	AutoStart          bool                     `json:"autoStart"`
 }
 
 // ToView converts the effective configuration for the frontend.
 func ToView(c *Config) View {
 	var v View
+	v.UILanguage = c.UILanguage
 	v.Window.Width = c.Window.Width
 	v.Window.Height = c.Window.Height
 	v.Window.RestoreFocus = c.Window.RestoreFocus
@@ -68,6 +71,7 @@ func ToView(c *Config) View {
 	v.Speech.Language = c.Speech.Language
 	v.Speech.SilenceSeconds = c.Speech.SilenceSeconds
 	v.Speech.SendPhrase = c.Speech.SendPhrase
+	v.Speech.SendPhraseProfiles = cloneSendPhrases(c.Speech.SendPhraseProfiles)
 	v.Speech.VertexProjectID = c.Speech.VertexProjectID
 	v.Speech.AutoStart = c.Speech.AutoStart
 	v.Clipboard.Backend = c.Clipboard.Backend
@@ -89,6 +93,12 @@ var (
 // silently replaced so the user sees what was wrong.
 func FromView(v View) (*Config, error) {
 	c := Default()
+	switch v.UILanguage {
+	case "", "ja", "en":
+		c.UILanguage = v.UILanguage
+	default:
+		return nil, errors.New(i18n.T("表示言語は ja または en を指定してください"))
+	}
 	if v.Window.Width < 200 || v.Window.Width > 4000 || v.Window.Height < 120 || v.Window.Height > 4000 {
 		return nil, errors.New(i18n.T("ウィンドウサイズは 幅 200〜4000 / 高さ 120〜4000 の範囲で指定してください"))
 	}
@@ -150,6 +160,7 @@ func speechFromView(v SpeechView) (*SpeechConfig, error) {
 	s.Model = strings.TrimSpace(v.Model)
 	s.Language = strings.TrimSpace(v.Language)
 	s.SendPhrase = v.SendPhrase
+	s.SendPhraseProfiles = cloneSendPhrases(v.SendPhraseProfiles)
 	s.VertexProjectID = strings.TrimSpace(v.VertexProjectID)
 	s.AutoStart = v.AutoStart
 

@@ -15,19 +15,39 @@ export function t(source, ...args) {
   return template.replace(/\{(\d+)\}/g, (token, index) => index < args.length ? String(args[index]) : token);
 }
 
+const textSources = new WeakMap();
+const attributeSources = new WeakMap();
+
 export function localizeDOM(document) {
   document.documentElement.lang = language;
   const walker = document.createTreeWalker(document.body, 4 /* SHOW_TEXT */);
   while (walker.nextNode()) {
     const node = walker.currentNode;
     if (["SCRIPT", "STYLE", "TEXTAREA"].includes(node.parentElement?.tagName)) continue;
-    const source = node.textContent.trim();
-    if (Object.hasOwn(messages, source)) node.textContent = node.textContent.replace(source, t(source));
+    let saved = textSources.get(node);
+    if (!saved) {
+      const source = node.textContent.trim();
+      if (!Object.hasOwn(messages, source)) continue;
+      saved = { original: node.textContent, source, last: node.textContent };
+      textSources.set(node, saved);
+    }
+    // Dynamic content is rendered by its owner; never replace user data.
+    if (node.textContent !== saved.last) continue;
+    node.textContent = saved.original.replace(saved.source, t(saved.source));
+    saved.last = node.textContent;
   }
   for (const node of document.querySelectorAll("[title], [placeholder], [aria-label]")) {
     for (const name of ["title", "placeholder", "aria-label"]) {
-      const source = node.getAttribute(name);
-      if (source && Object.hasOwn(messages, source)) node.setAttribute(name, t(source));
+      let saved = attributeSources.get(node);
+      if (!saved) { saved = {}; attributeSources.set(node, saved); }
+      const current = node.getAttribute(name);
+      if (!saved[name] && current && Object.hasOwn(messages, current)) {
+        saved[name] = { source: current, last: current };
+      }
+      if (saved[name] && current === saved[name].last) {
+        saved[name].last = t(saved[name].source);
+        node.setAttribute(name, saved[name].last);
+      }
     }
   }
 }

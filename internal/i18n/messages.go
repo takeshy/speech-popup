@@ -1,6 +1,7 @@
 package i18n
 
 var messages = map[string]string{
+	"表示言語は ja または en を指定してください":                "UI language must be ja or en",
 	"Azure MAI Transcribe の API Key を指定してください": "Specify the Azure MAI Transcribe API Key",
 	"音声入力を開く":    "Open speech input",
 	"設定…":        "Settings…",

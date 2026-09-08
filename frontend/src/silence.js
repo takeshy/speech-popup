@@ -1,20 +1,20 @@
 // Speech boundaries detected from silence, ported from gemihub-desktop's src/llm/speechSilence.ts.
 
-// Require a short run of audible input before arming the silence timeout, so
-// a boundary is never reported before the user has said anything.
+// Two audible samples in a short window arm the timeout. Natural speech has
+// brief quiet consonants/gaps; requiring 250 ms of uninterrupted loud input
+// can leave a short utterance buffered until the user speaks another sentence.
 export function createSilenceDetector(seconds) {
-  let voiceStarted = null;
+  let firstVoice = null;
   let lastVoice = 0;
   let armed = false;
   let finished = false;
   return (rms, now) => {
     if (finished || seconds <= 0) return false;
     if (rms >= 0.015) {
-      voiceStarted ??= now;
-      if (now - voiceStarted >= 250) armed = true;
+      if (firstVoice === null || now - lastVoice > 300) firstVoice = now;
+      else if (now - firstVoice >= 100) armed = true;
       lastVoice = now;
     } else {
-      voiceStarted = null;
       if (armed && now - lastVoice >= seconds * 1000) {
         finished = true;
         return true;

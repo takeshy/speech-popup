@@ -98,6 +98,13 @@ export function createTextEditor(input, onChange = () => {}) {
 
   return {
     handleKeydown,
+    speechBase: () => input.value.slice(0, input.selectionStart),
+    speechContext: () => JSON.stringify(snapshot()),
+    applySpeechPrefix(text) {
+      // The driver revises the prefix through the caret. Keep the untouched
+      // suffix and replace any selected text, with the caret after dictation.
+      replace(0, input.selectionEnd, text);
+    },
     setText(text) {
       const before = snapshot();
       input.value = text;

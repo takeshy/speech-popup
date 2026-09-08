@@ -9,7 +9,7 @@ const load = (file, context, factory) => vm.runInNewContext(
     .replace(/^import .*;$/gm, "").replace(/export /g, "") + `\n${factory};`, context);
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-test("recorder applies commands only on silence and retains that decision through retry", async () => {
+test("recorder converts question commands on manual stop or silence, including retries", async () => {
   for (const silent of [true, false]) {
     let silence;
     let fail = true;
@@ -32,7 +32,7 @@ test("recorder applies commands only on silence and retains that decision throug
       },
       validateSpeechSettings() {},
       recordingsToWav: async () => new Blob(["wav"]),
-      transcribeSpeech: async () => { if (fail) throw Error("retry me"); return "改行"; },
+      transcribeSpeech: async () => { if (fail) throw Error("retry me"); return "クエスチョン"; },
       watchSpeechSilence: (_stream, _seconds, callback, status) => { silence = callback; status(true); return () => {}; }
     }, "createRecorder");
     const recorder = create({ getSettings: () => ({ silenceSeconds: 1, sendPhrase: "" }),
@@ -44,40 +44,29 @@ test("recorder applies commands only on silence and retains that decision throug
     assert.equal(recorder.state().retainedCount, 1);
     fail = false;
     await recorder.retry();
-    assert.equal(text, silent ? "hello\n" : "hello 改行");
+    assert.equal(text, "hello?");
     recorder.discard();
   }
 });
 
-test("browser commands wait for both silence and final results, preserving converted segments", async () => {
-  let current, silence, text = "";
+test("browser preserves punctuation and converts question commands only on final results", async () => {
+  let current, text = "";
   const create = load("browser_speech", {
     t: x => x, speechDraft, convertSpokenSymbol,
     navigator: { language: "ja", mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } },
-    SpeechRecognition: class { constructor() { current = this; } start() {} abort() {} },
-    watchSpeechSilence: (_stream, _seconds, callback, status) => { silence = callback; status(true); return () => {}; }
+    SpeechRecognition: class { constructor() { current = this; } start() {} abort() {} }
   }, "createBrowserRecognizer");
-  const recognizer = create({ getSettings: () => ({ language: "ja", silenceSeconds: 1, sendPhrase: "" }),
-    getBase: () => text, onInput: value => { text = value; }, onSend() { assert.fail("must not send Enter"); }, onState() {} });
+  const recognizer = create({ getSettings: () => ({ language: "ja", silenceSeconds: 0, sendPhrase: "" }),
+    getBase: () => text, onInput: value => { text = value; }, onSend() { assert.fail("unexpected send"); }, onState() {} });
   recognizer.toggle();
   await tick();
   const result = (value, isFinal) => Object.assign([{ transcript: value }], { isFinal });
-  current.onresult({ results: [result("こんにちは てん", false)] });
-  silence();
-  assert.equal(text, "こんにちは てん");
-  current.onresult({ results: [result("こんにちは てん", true)] });
-  assert.equal(text, "こんにちは、");
-  current.onspeechstart();
-  current.onresult({ results: [result("こんにちは てん", true), result("改行", true)] });
-  assert.equal(text, "こんにちは、改行");
-  silence();
-  assert.equal(text, "こんにちは、\n");
-  current.onspeechstart();
-  current.onresult({ results: [result("こんにちは てん", true), result("改行", true), result("晴れです。まる。", true)] });
-  silence();
-  assert.equal(text, "こんにちは、\n晴れです。");
-  current.onresult({ results: [result("こんにちは てん", true), result("改行", true), result("晴れです。まる。", true)] });
-  assert.equal(text, "こんにちは、\n晴れです。", "rerenders preserve explicitly spoken full stops");
+  current.onresult({ results: [result("こんにちは。", true), result("いいですかクエスチョン", false)] });
+  assert.equal(text, "こんにちは。いいですかクエスチョン");
+  current.onresult({ results: [result("こんにちは。", true), result("いいですかクエスチョン", true)] });
+  assert.equal(text, "こんにちは。いいですか?");
+  current.onresult({ results: [result("こんにちは。", true), result("いいですかクエスチョン", true)] });
+  assert.equal(text, "こんにちは。いいですか?");
   recognizer.stop();
 });
 
@@ -104,18 +93,14 @@ test("editing live dictation consumes displayed results so revisions cannot resu
   current.onresult({ results: [result("heard over")] });
   assert.equal(text, "");
   assert.equal(sends, 0, "an edited-away hypothesis must not trigger send when finalized");
-  silence();
   assert.equal(text, "");
-  current.onspeechstart();
   current.onresult({ results: [result("heard over"), result("new words")] });
   assert.equal(text, "new words");
   text = "corrected words";
-  silence();
   assert.equal(text, "corrected words", "silence must not overwrite edits either");
   const count = writes;
   current.onresult({ results: [result("heard over"), result("new words")] });
   assert.equal(writes, count, "unchanged results must not reset the cursor or undo stack");
-  current.onspeechstart();
   current.onresult({ results: [result("heard over"), result("new words"), result("continue")] });
   assert.equal(text, "corrected words continue");
   recognizer.stop();
@@ -172,7 +157,7 @@ test("silence converts queued utterances while the microphone and next recording
   await tick();
   assert.equal(text, "edited hello");
   assert.equal(requests, 2);
-  replies.shift()("まる");
+  replies.shift()("。");
   await tick();
   assert.equal(text, "edited hello。");
   assert.equal(recorder.recording(), true);
@@ -181,4 +166,36 @@ test("silence converts queued utterances while the microphone and next recording
   assert.equal(recorder.busy(), false);
   assert.ok(trackStops > 0, "manual stop closes the microphone");
   assert.equal(requests, 2, "the silent tail is not sent for transcription");
+});
+
+test("browser revisions preserve the suffix and cursor moves affect only new segments", async () => {
+  let current;
+  let text = "left  right", start = 5, end = 5;
+  let sent = "";
+  const context = () => JSON.stringify([text, start, end]);
+  const create = load("browser_speech", {
+    t: x => x, speechDraft, convertSpokenSymbol,
+    navigator: { language: "en", mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } },
+    SpeechRecognition: class { constructor() { current = this; } start() {} abort() {} },
+    watchSpeechSilence: () => () => {}
+  }, "createBrowserRecognizer");
+  const recognizer = create({
+    getSettings: () => ({ language: "en", silenceSeconds: 0, sendPhrase: "over" }),
+    getBase: () => text.slice(0, start), getContext: context, getText: () => text,
+    onInput: value => { text = value + text.slice(end); start = end = value.length; },
+    onSend: value => { sent = value; }, onState() {}
+  });
+  recognizer.toggle();
+  await tick();
+  const result = (value, isFinal = false) => Object.assign([{ transcript: value }], { isFinal });
+  current.onresult({ results: [result("hello")] });
+  assert.equal(text, "left hello right");
+  current.onresult({ results: [result("hello world", true)] });
+  assert.equal(text, "left hello world right");
+  start = end = 0;
+  current.onresult({ results: [result("revised old result", true)] });
+  assert.equal(text, "left hello world right", "moving the cursor commits the displayed hypothesis");
+  current.onresult({ results: [result("revised old result", true), result("over", true)] });
+  assert.equal(sent, "left hello world right", "send at the start still copies the complete text");
+  recognizer.stop();
 });

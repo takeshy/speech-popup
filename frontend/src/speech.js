@@ -78,47 +78,33 @@ export function transcriptionURL(baseUrl, endpointType = "openai", vertexProject
 
 // speechDraft appends the transcript to whatever is already in the box and
 // reports whether the user spoke a send phrase ("over"), which copies & closes.
-export function speechDraft(base, transcript, final, sendPhrase = "over, オーバー", afterSilence = false, normalized = false) {
+export function speechDraft(base, transcript, final, sendPhrase = "over, オーバー", _afterSilence = false, normalized = false) {
   const phrases = sendPhrase.split(/[,、\n]/).map((phrase) => phrase.trim())
     .filter(Boolean).sort((a, b) => b.length - a.length);
   const pattern = phrases.map((phrase) => {
     const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return (/^[a-z0-9_]/i.test(phrase) ? "\\b" : "") + escaped;
+    // Word-based scripts need a Unicode boundary (e.g. terminé must not
+    // match the end of indéterminé). Scripts commonly written without spaces
+    // still allow a command immediately after the dictated text.
+    const unspaced = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}\p{Script=Tibetan}]/u.test(phrase);
+    return (!unspaced && /^[\p{L}\p{N}_]/u.test(phrase) ? "(?<![\\p{L}\\p{N}\\p{M}_])" : "") + escaped;
   }).join("|");
-  const command = pattern ? new RegExp(`(?:${pattern})[\\s。．.!！?？、,]*$`, "i") : null;
+  const command = pattern ? new RegExp(`(?:${pattern})[\\s。．.!！?？、,،؛؟।॥]*$`, "iu") : null;
   const send = final && !!command && command.test(transcript);
   let spoken = send && command ? transcript.replace(command, "").trimEnd() : transcript;
-  if (final && !normalized) spoken = convertSpokenSymbol(spoken, afterSilence && !send);
-  if (final) spoken = spoken.replace(/。+(?=、)/g, "");
-  // A new comma replaces the previous Japanese full stop, including when
-  // dictated in a separate recording. Do not rewrite other existing text.
-  if (/^、/.test(spoken)) base = base.replace(/。+[ \t　]*$/, "");
+  if (final && !normalized) spoken = convertSpokenSymbol(spoken, !send);
   return {
     text: base + (base && spoken && !/\s$/.test(base) && !/^[\s,.?!、。？！]/.test(spoken) ? " " : "") + spoken,
     send
   };
 }
 
-// Only the trailing command is eligible; punctuation added by STT is ignored.
-// English names need a word boundary (e.g. "weekend" must not match "end").
+// Only the explicit question command is converted, after recognition is final.
+// Preserve punctuation produced by the recognizer, including trailing 。 and 、.
 export function convertSpokenSymbol(text, commands = true) {
-  text = text.replace(/。+(?=、)/g, "");
-  const symbols = [
-    ["クエスチョン(?:マーク)?|はてな|\\bquestion(?:\\s+mark)?", "?"],
-    ["エクスクラメーション(?:マーク)?|びっくりマーク|\\bexclamation(?:\\s+mark)?", "!"],
-    ["カンマ|コンマ|\\bcomma", ","],
-    ["ピリオド|\\bperiod|\\bfull stop", "."],
-    ["読点|とうてん|(?<![\\p{L}\\p{N}_])(?:てん|点)", "、"],
-    ["句点|くてん|(?<![\\p{L}\\p{N}_])(?:まる|丸)", "。"],
-    ["改行|かいぎょう|エンター|\\benter|\\bnew line|\\bnewline", "\n"]
-  ];
-  for (const [names, symbol] of commands ? symbols : []) {
-    const match = new RegExp(`(?:${names})[\\s。．.!！?？、,]*$`, "iu").exec(text);
-    if (match) return text.slice(0, match.index).replace(/[。 \t　]+$/, "") + symbol;
-  }
-  // Suppress STT's automatic trailing Japanese full stop, but preserve
-  // internal sentence boundaries and explicit symbols returned above.
-  return text.replace(/。+(?=\s*$)/, "");
+  if (!commands) return text;
+  const match = /(?:クエスチョン(?:マーク)?|(?<![\p{L}\p{N}_])question(?:\s+mark)?)[\s。．.!！?？、,]*$/iu.exec(text);
+  return match ? text.slice(0, match.index).replace(/[。．. 	　]+$/, "") + "?" : text;
 }
 
 // 16 kHz mono PCM WAV also works with servers that cannot decode WebM/Opus.

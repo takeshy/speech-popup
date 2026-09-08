@@ -79,6 +79,7 @@ func TestMarshalRoundTrips(t *testing.T) {
 	cfg.Speech.EndpointType = EndpointGemini
 	cfg.Speech.APIKey = `a\b"c`
 	cfg.Speech.Language = "ja-JP"
+	cfg.UILanguage = "en"
 	cfg.Speech.AutoStart = false
 	cfg.Hotkey.Accelerator = "Ctrl+Alt+V"
 	path := filepath.Join(t.TempDir(), "config.toml")
@@ -106,5 +107,24 @@ func TestNormalizeAccelerator(t *testing.T) {
 		if got := normalizeAccelerator(input); got != "Ctrl+Shift+S" {
 			t.Errorf("normalizeAccelerator(%q) = %q", input, got)
 		}
+	}
+}
+
+func TestUILanguageView(t *testing.T) {
+	for _, language := range []string{"", "ja", "en"} {
+		view := ToView(Default())
+		view.UILanguage = language
+		cfg, err := FromView(view)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ToView(cfg).UILanguage != language {
+			t.Fatalf("language lost: %q", language)
+		}
+	}
+	view := ToView(Default())
+	view.UILanguage = "auto"
+	if _, err := FromView(view); err == nil {
+		t.Fatal("accepted unsupported UI language")
 	}
 }

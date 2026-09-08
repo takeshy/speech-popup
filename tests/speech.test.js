@@ -239,41 +239,28 @@ test("transcribeSpeech rejects a truncated Gemini candidate", async () => {
   );
 });
 
-test("spoken punctuation and Enter convert only after final silence", () => {
-  for (const [name, symbol] of [["てん", "、"], ["まる", "。"], ["カンマ", ","], ["コンマ", ","], ["ピリオド", "."], ["はてな", "?"], ["クエスチョンマーク", "?"], ["クエスチョン", "?"], ["びっくりマーク", "!"], ["エクスクラメーション", "!"], ["エクスクラメーションマーク", "!"], ["exclamation", "!"], ["Exclamation", "!"], ["exclamation mark", "!"], ["改行", "\n"], ["エンター", "\n"], ["Enter", "\n"], ["new line", "\n"], ["comma", ","], ["period", "."], ["question mark", "?"], ["question", "?"], ["Question", "?"], ["句点", "。"], ["読点", "、"]]) {
-    assert.equal(speechDraft("", `hello ${name}。`, true, "", true).text, `hello${symbol}`);
-    assert.equal(speechDraft("hello", name, true, "", true).text, `hello${symbol}`);
-    assert.equal(speechDraft("", name, false, "", true).text, name);
-    assert.equal(speechDraft("", name, true, "", false).text, name);
+test("only explicit question commands convert on final recognition, without needing silence", () => {
+  for (const command of ["クエスチョン", "クエスチョンマーク", "question", "Question", "question mark"]) {
+    for (const silence of [true, false]) {
+      assert.equal(speechDraft("", `hello ${command}。`, true, "", silence).text, "hello?");
+      assert.equal(speechDraft("", command, false, "", silence).text, command);
+    }
   }
-  assert.equal(speechDraft("", "いいですかクエスチョン。", true, "", true).text, "いいですか?");
-  assert.equal(speechDraft("", "クエスチョンについて話す", true, "", true).text, "クエスチョンについて話す");
-  assert.equal(speechDraft("", "カンマについて話す", true, "", true).text, "カンマについて話す");
-  assert.equal(speechDraft("", "会議が始まる", true, "", true).text, "会議が始まる");
-  assert.equal(speechDraft("", "すごいエクスクラメーション。", true, "", true).text, "すごい!");
-  assert.equal(speechDraft("", "エクスクラメーションについて話す", true, "", true).text, "エクスクラメーションについて話す");
-  assert.equal(speechDraft("", "exclamation is a word", true, "", true).text, "exclamation is a word");
-  assert.equal(speechDraft("", "exclamations", true, "", true).text, "exclamations");
-  assert.equal(speechDraft("", "subexclamation", true, "", true).text, "subexclamation");
-  assert.equal(speechDraft("", "subquestion", true, "", true).text, "subquestion");
-  assert.equal(speechDraft("", "questions", true, "", true).text, "questions");
-  assert.equal(speechDraft("", "disenter", true, "", true).text, "disenter");
-  assert.equal(speechDraft("hello\n", "world", true, "", true).text, "hello\nworld");
-  assert.equal(speechDraft("hello\n", "改行", true, "", true).text, "hello\n\n");
-  assert.deepEqual(speechDraft("", "hello 改行 over", true, "over", true), { text: "hello 改行", send: true });
+  assert.equal(speechDraft("", "いいですかクエスチョン。", true, "").text, "いいですか?");
+  for (const word of ["まる", "丸", "句点", "くてん", "てん", "読点", "カンマ", "ピリオド",
+    "はてな", "改行", "エンター", "exclamation", "comma", "period", "new line", "Enter",
+    "subquestion", "questions", "クエスチョンについて話す"]) {
+    assert.equal(speechDraft("", word, true, "", true).text, word);
+  }
+  assert.deepEqual(speechDraft("", "hello question over", true, "over", true), { text: "hello question", send: true });
 });
 
-test("Japanese automatic full stops yield to explicit punctuation", () => {
-  assert.equal(speechDraft("", "きょうは。てん。", true, "", true).text, "きょうは、");
-  assert.equal(speechDraft("", "きょうは。、", true, "", true).text, "きょうは、");
-  assert.equal(speechDraft("きょうは。", "てん", true, "", true).text, "きょうは、");
-  assert.equal(speechDraft("", "きょうは。", true, "").text, "きょうは");
-  assert.equal(speechDraft("", "きょうは。", false, "").text, "きょうは。");
-  assert.equal(speechDraft("", "きょうは。まる。", true, "", true).text, "きょうは。");
-  assert.equal(speechDraft("", "まる。", true, "", true).text, "。");
-  assert.equal(speechDraft("", "きょうは。晴れです。", true, "").text, "きょうは。晴れです");
-  assert.equal(speechDraft("", "Hello.", true, "").text, "Hello.");
-  assert.equal(speechDraft("前の入力。", "次の入力。", true, "").text, "前の入力。 次の入力");
+test("recognizer punctuation is preserved verbatim", () => {
+  for (const text of ["きょうは。", "きょうは。晴れです。", "きょうは。、", "Hello.", "晴れです丸", "句点。"]) {
+    assert.equal(speechDraft("", text, true, "").text, text);
+  }
+  assert.equal(speechDraft("前の入力。", "次の入力。", true, "").text, "前の入力。 次の入力。");
+  assert.equal(speechDraft("きょうは。", "、", true, "").text, "きょうは。、");
 });
 
 test("Azure MAI sends WAV and enhanced-mode definition with subscription-key authentication", async () => {

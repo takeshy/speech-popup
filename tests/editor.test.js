@@ -100,3 +100,21 @@ test("standard clipboard and recording keys are not intercepted", () => {
   assert.equal(key("a", { metaKey: true }), false);
   assert.equal(key("a", { isComposing: true }), false);
 });
+
+test("dictation inserts at the caret, replaces selections, and restores them on undo", () => {
+  const { input, editor, key } = setup("前の文。後の文。");
+  input.setSelectionRange(4);
+  assert.equal(editor.speechBase(), "前の文。");
+  editor.applySpeechPrefix(editor.speechBase() + "挿入。");
+  assert.equal(input.value, "前の文。挿入。後の文。");
+  assert.equal(input.selectionStart, 7);
+  key("z");
+  assert.equal(input.value, "前の文。後の文。");
+  assert.equal(input.selectionStart, 4);
+  input.setSelectionRange(0, 4);
+  editor.applySpeechPrefix("書き換え。");
+  assert.equal(input.value, "書き換え。後の文。");
+  key("z");
+  assert.equal(input.selectionStart, 0);
+  assert.equal(input.selectionEnd, 4);
+});

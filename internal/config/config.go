@@ -42,7 +42,8 @@ type HotkeyConfig struct {
 // turned into text. api_key is stored in plain text in config.toml, which is
 // written with 0600 permissions.
 type SpeechConfig struct {
-	Profiles map[string]SpeechProfile
+	SendPhraseProfiles map[string]string
+	Profiles           map[string]SpeechProfile
 
 	// Provider is "browser" (the WebView's own SpeechRecognition, live
 	// dictation) or "openai-compatible" (record, then POST the audio).
@@ -64,10 +65,11 @@ type SpeechConfig struct {
 }
 
 type Config struct {
-	Window    WindowConfig
-	Clipboard ClipboardConfig
-	Hotkey    HotkeyConfig
-	Speech    SpeechConfig
+	UILanguage string // Empty until first save; otherwise "ja" or "en".
+	Window     WindowConfig
+	Clipboard  ClipboardConfig
+	Hotkey     HotkeyConfig
+	Speech     SpeechConfig
 }
 
 // Endpoint types accepted by SpeechConfig.EndpointType.
@@ -207,15 +209,15 @@ func LoadFrom(path string) *Config {
 	return cfg
 }
 
-// quote renders a TOML basic string, escaping only the backslash and the
-// double quote so Windows paths stay readable.
+// quote renders a TOML basic string on one line, including user-entered phrases.
 func quote(value string) string {
 	value = strings.ReplaceAll(value, "\\", "\\\\")
 	value = strings.ReplaceAll(value, "\"", "\\\"")
+	value = strings.NewReplacer("\n", "\\n", "\r", "\\r", "\t", "\\t", "\b", "\\b", "\f", "\\f").Replace(value)
 	return "\"" + value + "\""
 }
 
-// unquote reverses quote; other escape sequences are kept verbatim.
+// unquote reverses quote, retaining the legacy handling of unknown escapes.
 func unquote(value string) string {
 	if !strings.Contains(value, "\\") {
 		return value
@@ -225,6 +227,18 @@ func unquote(value string) string {
 	for _, r := range value {
 		switch {
 		case escaped:
+			switch r {
+			case 'n':
+				r = '\n'
+			case 'r':
+				r = '\r'
+			case 't':
+				r = '\t'
+			case 'b':
+				r = '\b'
+			case 'f':
+				r = '\f'
+			}
 			b.WriteRune(r)
 			escaped = false
 		case r == '\\':
@@ -263,7 +277,20 @@ func (c *Config) apply(section, key, value string) {
 		return
 	}
 
+	if section == "speech.send_phrases" {
+		if languagePattern.MatchString(key) {
+			if c.Speech.SendPhraseProfiles == nil {
+				c.Speech.SendPhraseProfiles = make(map[string]string)
+			}
+			c.Speech.SendPhraseProfiles[key] = value
+		}
+		return
+	}
 	switch section {
+	case "ui":
+		if key == "language" && (value == "ja" || value == "en") {
+			c.UILanguage = value
+		}
 	case "window":
 		switch key {
 		case "width":
@@ -357,6 +384,9 @@ func atoiOr(value string, fallback int) int {
 // Settings dialog stays readable and hand-editable.
 func Marshal(c *Config) string {
 	var b strings.Builder
+	if c.UILanguage != "" {
+		fmt.Fprintf(&b, "[ui]\nlanguage = %q\n\n", c.UILanguage)
+	}
 	b.WriteString("[window]\n")
 	fmt.Fprintf(&b, "width = %d\n", c.Window.Width)
 	fmt.Fprintf(&b, "height = %d\n", c.Window.Height)
@@ -382,6 +412,7 @@ func Marshal(c *Config) string {
 	b.WriteString("# ポップアップを開いた直後に録音を開始する\n")
 	fmt.Fprintf(&b, "auto_start = %t\n", c.Speech.AutoStart)
 	c.Speech.marshalProfiles(&b)
+	c.Speech.marshalSendPhrases(&b)
 	b.WriteString("\n[clipboard]\n")
 	b.WriteString("# \"wl-copy\" | \"wails\" (既定: Linux=wl-copy, Windows/macOS=wails)\n")
 	fmt.Fprintf(&b, "backend = %s\n", quote(c.Clipboard.Backend))

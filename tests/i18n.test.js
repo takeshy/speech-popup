@@ -6,7 +6,7 @@ import { messages } from "../frontend/src/messages.js";
 
 test("Japanese locales use Japanese; other locales fall back to English", () => {
   for (const locale of ["ja", "ja-JP", "JA_jp"]) assert.equal(resolveLanguage(locale), "ja");
-  for (const locale of ["en-US", "fr-FR", "", undefined]) assert.equal(resolveLanguage(locale), "en");
+  for (const locale of ["en-US", "fr-FR", "zh-CN", "ko-KR", "C", "unknown", "jp", "japanese", "", null, undefined]) assert.equal(resolveLanguage(locale), "en");
   setLanguage("ja-JP"); assert.equal(t("録音中"), "録音中");
   setLanguage("en-US"); assert.equal(t("録音中"), "Recording");
 });
@@ -21,7 +21,7 @@ test("translation preserves interpolated user text and placeholder-like content"
 });
 
 test("all literal UI translation calls have an English catalog entry", () => {
-  for (const file of ["main", "speech", "recorder", "browser_speech"]) {
+  for (const file of ["main", "speech", "recorder", "browser_speech", "speech_languages", "send_phrases"]) {
     const source = readFileSync(new URL(`../frontend/src/${file}.js`, import.meta.url), "utf8");
     for (const match of source.matchAll(/\bt\(("(?:\\.|[^"\\])*")/g)) {
       const key = JSON.parse(match[1]);
@@ -39,12 +39,23 @@ test("DOM localization translates labels and attributes without changing textare
   const attrs = { title: "メニュー", placeholder: "a user value" };
   const walker = { currentNode: null, nextNode() { this.currentNode = nodes[index++]; return !!this.currentNode; } };
   let index = 0;
+  const attrNode = { getAttribute: (key) => attrs[key], setAttribute: (key, value) => { attrs[key] = value; } };
   const document = { documentElement: {}, body: {}, createTreeWalker: () => walker,
-    querySelectorAll: () => [{ getAttribute: (key) => attrs[key], setAttribute: (key, value) => { attrs[key] = value; } }] };
+    querySelectorAll: () => [attrNode] };
   localizeDOM(document);
   assert.equal(document.documentElement.lang, "en");
   assert.equal(nodes[0].textContent, "  Settings  ");
   assert.equal(nodes[1].textContent, "設定");
   assert.equal(attrs.title, "Menu");
   assert.equal(attrs.placeholder, "a user value");
+  setLanguage("ja");
+  index = 0;
+  localizeDOM(document);
+  assert.equal(nodes[0].textContent, "  設定  ");
+  assert.equal(attrs.title, "メニュー");
+  nodes[0].textContent = "user edited text";
+  setLanguage("en");
+  index = 0;
+  localizeDOM(document);
+  assert.equal(nodes[0].textContent, "user edited text");
 });

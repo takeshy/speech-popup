@@ -5,6 +5,8 @@ import vm from "node:vm";
 import { createRecorder, speechSupported } from "../frontend/src/recorder.js";
 import { createTextEditor } from "../frontend/src/editor.js";
 import { createAutoSizer } from "../frontend/src/autosize.js";
+import { defaultSendPhrase, initialSendPhrase, sendPhraseLanguage } from "../frontend/src/send_phrases.js";
+import { speechLanguageOptions } from "../frontend/src/speech_languages.js";
 import { t as translate, setLanguage, getLanguage } from "../frontend/src/i18n.js";
 setLanguage("ja");
 import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "../frontend/src/speech.js";
@@ -22,7 +24,7 @@ async function until(predicate) {
   assert.fail("UI did not reach the expected state");
 }
 
-async function setup(t, { history = [], copyFails = false, vertexClient = null } = {}) {
+async function setup(t, { history = [], copyFails = false, vertexClient = null, speech = {} } = {}) {
   let microphoneRequests = 0;
   const audioGlobals = {
     navigator: { mediaDevices: { getUserMedia: async () => {
@@ -65,6 +67,7 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null }
         value: "", textContent: "", hidden: false, dataset: {}, checked: false,
         selectionStart: 0, selectionEnd: 0,
         focus() {}, setAttribute() {},
+        options: [], replaceChildren(...options) { this.options = options; this.value = options[0]?.value ?? ""; },
         setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; },
         setRangeText(text, start, end) {
           this.value = this.value.slice(0, start) + text + this.value.slice(end);
@@ -74,13 +77,22 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null }
         fire(name, event = {}) { handlers[name]?.({ preventDefault() {}, ...event }); }
       });
     }
-    return elements.get(id);
+    const node = elements.get(id);
+    if (id === "cfg-speech-language" && !node.selectValueInstalled) {
+      node.selectValueInstalled = true;
+      let selected = "";
+      Object.defineProperty(node, "value", {
+        get() { return selected; },
+        set(value) { selected = this.options.some(option => option.value === value) ? value : ""; }
+      });
+    }
+    return node;
   }
   const events = {};
   let config = {
     speech: { provider: "openai-compatible", endpointType: "openai", baseUrl: "https://example.com/v1",
       apiKey: "invalid", model: "whisper-1", language: "auto", silenceSeconds: 0,
-      sendPhrase: "", vertexProjectId: "", autoStart: true },
+      sendPhrase: "", vertexProjectId: "", autoStart: true, ...speech },
     window: { width: 600, height: 300, restoreFocus: true },
     clipboard: { backend: "wails", autoPaste: true, autoPasteDelayMs: 80, pasteKey: "ctrl+v" },
     hotkey: { enabled: false, accelerator: "Ctrl+8" }
@@ -119,7 +131,9 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null }
       EventsOn(name, callback) { events[name] = callback; }
     } },
     createRecorder, createTextEditor, createAutoSizer, speechSupported, endpointPreset, isGoogleEndpoint, validateSpeechSettings,
-    t: translate, getLanguage, localizeDOM() {},
+    t: translate, getLanguage, setLanguage, speechLanguageOptions, defaultSendPhrase, initialSendPhrase, sendPhraseLanguage,
+    Option: class { constructor(text, value) { this.textContent = text; this.value = value; } },
+    localizeDOM() {},
     createAudioMeter: () => ({ attach: async () => true }),
     browserSpeechSupported: () => false,
     URL, structuredClone, setTimeout, clearTimeout, clearInterval,
@@ -132,7 +146,7 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null }
   vm.runInContext(source, context);
   await booted;
   return { element, events, requests, vertexConnections, history: () => JSON.parse(savedHistory),
-    hides: () => hides, microphoneRequests: () => microphoneRequests };
+    config: () => structuredClone(config), hides: () => hides, microphoneRequests: () => microphoneRequests };
 }
 
 test("failed recording can be retried after correcting credentials in Settings", async (t) => {
@@ -291,7 +305,7 @@ test("service profiles restore edits, isolate keys, and survive saving and reope
     ui.element("cfg-speech-endpoint").value = name;
     ui.element("cfg-speech-endpoint").fire("change");
   };
-  ui.element("cfg-speech-language").value = "en-US";
+  ui.element("cfg-speech-language").value = "en";
   switchTo("azure-mai-transcribe");
   assert.equal(ui.element("cfg-speech-api-key").value, "");
   ui.element("cfg-speech-base-url").value = "https://azure.example.com";
@@ -303,7 +317,7 @@ test("service profiles restore edits, isolate keys, and survive saving and reope
   ui.element("cfg-speech-vertex-project").value = "my-project";
   switchTo("openai");
   assert.equal(ui.element("cfg-speech-api-key").value, "invalid");
-  assert.equal(ui.element("cfg-speech-language").value, "en-US");
+  assert.equal(ui.element("cfg-speech-language").value, "en");
   assert.equal(ui.element("cfg-speech-vertex-project").value, "");
   switchTo("azure-mai-transcribe");
   assert.equal(ui.element("cfg-speech-api-key").value, "azure-key");
@@ -326,4 +340,123 @@ test("service profiles restore edits, isolate keys, and survive saving and reope
   switchTo("azure-mai-transcribe");
   assert.equal(ui.element("cfg-speech-base-url").value, "https://azure.example.com");
   assert.equal(ui.element("cfg-speech-language").value, "ja");
+});
+
+test("display language defaults to detected language and switches on save without losing text", async (t) => {
+  setLanguage("ja");
+  t.after(() => setLanguage("ja"));
+  const ui = await setup(t);
+  assert.equal(ui.element("cfg-ui-language").value, "ja");
+  ui.element("input").value = "日本語 draft";
+  ui.element("menu-settings").fire("click");
+  await until(() => ui.element("cfg-speech-api-key").value === "invalid");
+  ui.element("cfg-ui-language").value = "en";
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").textContent === "Saved.");
+  assert.equal(ui.element("mode").textContent, "Idle");
+  assert.equal(ui.element("input").value, "日本語 draft");
+  ui.element("settings-close").fire("click");
+  ui.element("menu-settings").fire("click");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(ui.element("cfg-ui-language").value, "en");
+  ui.element("cfg-ui-language").value = "ja";
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").textContent === "保存しました。");
+  assert.equal(ui.element("mode").textContent, "待機中");
+});
+
+test("speech dropdown changes service codes and preserves existing regional tags", async (t) => {
+  const ui = await setup(t, { speech: { language: "fr-CA" } });
+  const select = ui.element("cfg-speech-language");
+  assert.equal(select.value, "fr-CA");
+  assert.ok(select.options.some(option => option.value === "fr"));
+  ui.element("cfg-speech-endpoint").value = "gemini-transcribe";
+  ui.element("cfg-speech-endpoint").fire("change");
+  assert.equal(select.value, "auto");
+  assert.ok(select.options.some(option => option.value === "fr-FR"));
+  assert.ok(!select.options.some(option => option.value === "fr"));
+  select.value = "fr-FR";
+  select.fire("change");
+  ui.element("cfg-speech-endpoint").value = "openai";
+  ui.element("cfg-speech-endpoint").fire("change");
+  assert.equal(select.value, "fr-CA");
+  select.value = "custom";
+  select.fire("change");
+  assert.equal(ui.element("cfg-speech-language-custom").disabled, false);
+  ui.element("cfg-speech-language-custom").value = "es-MX";
+  ui.element("cfg-speech-language-custom").fire("change");
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").textContent === "保存しました。");
+  assert.equal(ui.config().speech.language, "es-MX");
+  assert.equal(ui.config().speech.profiles["gemini-transcribe"].language, "fr-FR");
+  assert.equal(select.value, "es-MX");
+});
+
+test("send phrases follow language changes, remember edits and disabling, and reset", async (t) => {
+  const ui = await setup(t, { speech: { language: "en", sendPhrase: "over, オーバー" } });
+  const phrase = ui.element("cfg-speech-send-phrase");
+  const language = ui.element("cfg-speech-language");
+  const choose = (code) => { language.value = code; language.fire("change"); };
+  assert.equal(phrase.value, "over");
+  choose("fr");
+  assert.equal(phrase.value, "terminé");
+  phrase.value = "envoyer maintenant";
+  choose("de");
+  assert.equal(phrase.value, "fertig");
+  phrase.value = "";
+  choose("fr");
+  assert.equal(phrase.value, "envoyer maintenant");
+  choose("de");
+  assert.equal(phrase.value, "");
+  ui.element("speech-send-phrase-reset").fire("click");
+  assert.equal(phrase.value, "fertig");
+  choose("fr");
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").textContent === "保存しました。");
+  assert.equal(ui.config().speech.sendPhraseProfiles.fr, "envoyer maintenant");
+  assert.equal(ui.config().speech.sendPhraseProfiles.de, "fertig");
+  ui.element("menu-settings").fire("click");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(phrase.value, "envoyer maintenant");
+  ui.element("cfg-speech-endpoint").value = "gemini-transcribe";
+  ui.element("cfg-speech-endpoint").fire("change");
+  choose("fr-FR");
+  assert.equal(phrase.value, "envoyer maintenant", "same language shares edits across services");
+});
+
+test("saved language-specific send phrases are restored at startup", async (t) => {
+  const ui = await setup(t, { speech: {
+    language: "fr", sendPhrase: "stale global phrase", sendPhraseProfiles: { fr: "", de: "abschicken" }
+  } });
+  assert.equal(ui.element("cfg-speech-send-phrase").value, "");
+  ui.element("cfg-speech-language").value = "de";
+  ui.element("cfg-speech-language").fire("change");
+  assert.equal(ui.element("cfg-speech-send-phrase").value, "abschicken");
+});
+
+test("record button preserves the caret and inserts recognition before the suffix", async (t) => {
+  const ui = await setup(t, { speech: { apiKey: "corrected" } });
+  const input = ui.element("input");
+  input.value = "left  right";
+  input.setSelectionRange(5, 5);
+  ui.element("record").fire("click");
+  assert.equal(input.selectionStart, 5);
+  await until(() => ui.element("mode").dataset.recording === "true");
+  ui.element("record").fire("click");
+  await until(() => input.value === "left recognized right");
+  assert.equal(input.selectionStart, "left recognized".length);
+  input.fire("keydown", { key: "z", ctrlKey: true });
+  assert.equal(input.value, "left  right");
+  assert.equal(input.selectionStart, 5);
+});
+
+test("recorded speech replaces selected text and keeps the remaining text", async (t) => {
+  const ui = await setup(t, { speech: { apiKey: "corrected" } });
+  const input = ui.element("input");
+  input.value = "left old right";
+  input.setSelectionRange(5, 8);
+  ui.element("record").fire("click");
+  await until(() => ui.element("mode").dataset.recording === "true");
+  ui.element("record").fire("click");
+  await until(() => input.value === "left recognized right");
 });
