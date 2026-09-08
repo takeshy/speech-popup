@@ -83,6 +83,9 @@ jobs:
           npm run build
           if [ "${{ matrix.target }}" = "linux" ]; then
             go test -tags gtk3 ./...
+          elif [ "${{ matrix.target }}" = "darwin" ]; then
+            # macOS runner TMPDIR paths exceed the Unix socket path limit in IPC tests.
+            TMPDIR=/tmp go test ./...
           else
             go test ./...
           fi
