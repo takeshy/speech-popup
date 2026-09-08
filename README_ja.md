@@ -292,3 +292,9 @@ wails3 task windows:msix ARCH=arm64
 確定した認識結果の末尾に自動で付く `。` は除きます。文章途中の句点は残します。句点を入れたいときは「まる」と言って無音を待ってください。`。、` は `、` に直します (別の録音で読点を追加した場合も同様です)。
 
 改行や折り返しで入力内容が増えるとウィンドウが広がり、通常は高さ600pxまで、それ以上は入力欄内をスクロールします。設定した高さが600pxより大きい場合はその高さを使い、画面の作業領域内に収めます。内容を減らすと設定した高さまで縮みます。自動調整で保存済みのサイズ設定は変更しません。
+
+### GitHub Release
+
+`vMAJOR.MINOR.PATCH` タグをpushすると、skk-popupと同じ方針の **Release** ワークフローが動きます。Linux amd64/arm64・macOS arm64・Windows amd64/arm64 をビルドし、Store用変数が両方設定されていればWindowsのMSIXも生成します。全ビルド成功後、成果物と自動生成のリリースノートを添付した **ドラフトのGitHub Release** を作成します。公開はドラフトを確認してから行ってください。Microsoft Storeへの申請は行いません。
+
+既存タグにも対応しています。**Actions → Release → Run workflow** で `main` を選び、タグ (例: `v0.2.0`) を入力します。そのタグのソースをビルドし、`wails.json` のバージョンとの一致を確認したうえで、同じタグのReleaseに成果物を添付します。**Windows packages** はWindowsのみを手動ビルドする用途で残り、ActionsのArtifactsを生成しますがReleaseは作成しません。

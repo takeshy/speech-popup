@@ -235,3 +235,9 @@ Only the trailing name is converted, not commands in the middle of a sentence. S
 Final recognition results omit an automatic trailing Japanese full stop (`。`). Internal sentence boundaries remain. Say `まる` after silence to insert an explicit `。`. A redundant `。` before `、` is removed, including when the comma is dictated in a later recording.
 
 The popup grows with line breaks and wrapped text, up to 600 px tall (or your configured height if larger), within the available screen height. Beyond that, the editor scrolls. Removing text shrinks it toward the configured height; automatic sizing does not change your saved settings.
+
+### GitHub Releases
+
+Pushing a `vMAJOR.MINOR.PATCH` tag runs the **Release** workflow, following the same process as skk-popup. It builds Linux amd64/arm64, macOS arm64, and Windows amd64/arm64 binaries. Windows MSIX packages are included when both Store identity variables are configured. After all builds succeed, the workflow creates a **draft GitHub Release** with the binaries, packages, and generated release notes. Publish the draft when ready; this does not submit anything to Microsoft Store.
+
+For an existing tag, run **Actions → Release → Run workflow** on `main` and enter the tag (for example, `v0.2.0`). The workflow builds that tag's source, verifies its version against `wails.json`, and attaches the assets to that tag. The separate **Windows packages** workflow remains available for manual Windows-only builds and uploads Actions artifacts without creating a Release.

@@ -25,7 +25,7 @@ wails3 task windows:msix ARCH=amd64
 wails3 task windows:msix ARCH=arm64
 ```
 
-Outputs are `bin/speech-popup-windows-amd64.msix` and `bin/speech-popup-windows-arm64.msix`. The EXE is rebuilt for each architecture and includes the app icon/version resources. The `Windows packages` GitHub Actions workflow builds EXEs for both architectures when manually dispatched or when a `v*` tag is pushed. It also builds MSIX packages when both identity variables are set; otherwise it emits a notice and skips only MSIX packaging. Invalid configured identities still fail packaging.
+Outputs are `bin/speech-popup-windows-amd64.msix` and `bin/speech-popup-windows-arm64.msix`. The EXE is rebuilt for each architecture and includes the app icon/version resources. The `Windows packages` GitHub Actions workflow builds EXEs for both architectures when manually dispatched. It also builds MSIX packages when both identity variables are set; otherwise it emits a notice and skips only MSIX packaging. Invalid configured identities still fail packaging.
 
 The MSIX contains the full-trust desktop EXE, microphone/network declarations, startup task and app/Store/tile logos. The UI ships English and Japanese resources inside the frontend. Supported package languages are en-US and ja-JP.
 
@@ -65,3 +65,5 @@ Upload the MSIX packages and submit for certification in Partner Center. Account
 5. 実際の Windows 画面のスクリーンショットと公開済みのプライバシーポリシー URL を用意し、英日ストア説明を入力します。
 6. `runFullTrust` は Win32 のホットキー・クリップボード・貼り付け・トレイを使うデスクトップアプリとして説明します。
 7. MSIX をアップロードして審査へ提出します。このリポジトリから申請・公開を自動実行することはありません。
+
+The **Release** workflow handles version tags and uploads all platform binaries and configured Windows MSIX packages to a draft GitHub Release. It can also be dispatched from `main` with an existing version tag. Publishing a GitHub Release does not submit the app to Microsoft Store.
