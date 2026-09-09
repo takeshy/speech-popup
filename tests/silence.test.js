@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSilenceDetector } from "../frontend/src/silence.js";
+import { createSilenceDetector, createVoiceGate } from "../frontend/src/silence.js";
 
 test("the detector never fires before speech is heard", () => {
   const detect = createSilenceDetector(1);
@@ -49,4 +49,35 @@ test("seconds = 0 disables the automatic stop", () => {
   detect(0.05, 0);
   detect(0.05, 400);
   assert.equal(detect(0, 60000), false);
+});
+
+test("a noisy room reaches silence once its own level is learned", () => {
+  const detect = createSilenceDetector(1);
+  let now = 0;
+  let fired = false;
+  // Constant room noise, well above the old fixed threshold. With that threshold
+  // the quiet period never arrived and the segment never closed; the level of the
+  // room is learned within one window instead, and the noise then counts as quiet.
+  for (; now < 12000 && !fired; now += 100) fired = detect(0.02, now);
+  assert.equal(fired, true);
+  assert.ok(now <= 7000, `expected silence within a window and its timeout, fired at ${now} ms`);
+});
+
+test("speech is still heard over a room whose level has been learned", () => {
+  const gate = createVoiceGate();
+  for (let i = 0; i < 60; i++) gate(0.02);
+  assert.equal(gate(0.02), false);
+  assert.equal(gate(0.09), true);
+  // Hysteresis: a syllable dip stays speech, so words do not split.
+  assert.equal(gate(0.05), true);
+  assert.equal(gate(0.02), false);
+});
+
+test("the gate keeps hearing speech that is barely above a quiet room", () => {
+  const gate = createVoiceGate();
+  for (let i = 0; i < 60; i++) assert.equal(gate(0.002), false);
+  // A soft voice in a quiet room, which a fixed 0.015 threshold would miss.
+  assert.equal(gate(0.014), true);
+  assert.equal(gate(0.009), true);
+  assert.equal(gate(0.001), false);
 });
