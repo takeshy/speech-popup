@@ -58,6 +58,8 @@ type App struct {
 	overlayOpen    bool
 	contentHeight  int
 	ipcServer      *ipc.Server
+	liveMu         sync.Mutex
+	liveSpeech     *liveSpeechSession
 }
 
 func NewApp(wailsApp *application.App, cfg *config.Config) *App {
@@ -102,6 +104,7 @@ func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) 
 
 // ServiceShutdown flushes pending writes and closes the socket.
 func (a *App) ServiceShutdown() error {
+	a.StopLiveSpeech()
 	if a.hotkeyMgr != nil {
 		a.hotkeyMgr.Stop()
 	}

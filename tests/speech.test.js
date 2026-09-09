@@ -104,6 +104,15 @@ test("validateSpeechSettings reports what is missing", () => {
   }), /BCP-47/);
 });
 
+test("validateSpeechSettings accepts only OpenAI and Gemini in live mode", () => {
+  assert.equal(validateSpeechSettings({ ...baseSettings, provider: "live", endpointType: "openai", apiKey: "key" }),
+    "wss://api.openai.com/v1/realtime?intent=transcription");
+  assert.equal(validateSpeechSettings({ ...baseSettings, provider: "live", endpointType: "gemini-transcribe", apiKey: "key" }),
+    "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent");
+  assert.throws(() => validateSpeechSettings({ ...baseSettings, provider: "live", endpointType: "custom", apiKey: "key" }), /OpenAI.*Gemini/);
+  assert.throws(() => validateSpeechSettings({ ...baseSettings, provider: "live", endpointType: "openai", apiKey: "" }), /API Key/);
+});
+
 test("encodeSpeechWav writes a 16 kHz mono header", async () => {
   const wav = encodeSpeechWav(Float32Array.from([0, 1, -1, 0.5]));
   const view = new DataView(await wav.arrayBuffer());

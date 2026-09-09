@@ -8,7 +8,7 @@ speech-popup is a desktop voice-input utility developed by takeshy. This policy 
 
 The app uses your microphone when recording or browser speech recognition is started. By default, opening the popup starts recording; you can disable this in Settings. Hiding the popup stops microphone capture.
 
-For recorded transcription, audio is converted to WAV and sent directly from your computer to your selected OpenAI, OpenAI-compatible, whisper.cpp, Gemini or Vertex AI endpoint. A local endpoint keeps this request local to that server; a cloud or remote endpoint receives the audio. Browser speech recognition is provided by the WebView/browser vendor and may send audio to its service.
+For recorded transcription, audio is converted to WAV and sent directly from your computer to your selected OpenAI, OpenAI-compatible, whisper.cpp, Gemini or Vertex AI endpoint. Live transcription streams raw PCM audio to the selected OpenAI or Gemini service while the microphone is active. A local endpoint keeps a request local to that server; a cloud or remote endpoint receives the audio. Browser speech recognition is provided by the WebView/browser vendor and may send audio to its service.
 
 The developer does not operate a transcription server or receive your audio through an app-operated relay. Providers may retain or process data according to their own policies. Cloud services may require a separate account and incur charges.
 

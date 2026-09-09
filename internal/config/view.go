@@ -157,10 +157,10 @@ func FromView(v View) (*Config, error) {
 func speechFromView(v SpeechView) (*SpeechConfig, error) {
 	s := Default().Speech
 	switch v.Provider {
-	case ProviderBrowser, ProviderHTTP:
+	case ProviderBrowser, ProviderHTTP, ProviderLive:
 		s.Provider = v.Provider
 	default:
-		return nil, fmt.Errorf(i18n.T("provider %q は browser または openai-compatible を指定してください"), v.Provider)
+		return nil, fmt.Errorf(i18n.T("provider %q は browser / live / openai-compatible のいずれかを指定してください"), v.Provider)
 	}
 	if !validEndpointType(v.EndpointType) {
 		return nil, fmt.Errorf(i18n.T("endpoint_type %q は openai / whisper-cpp / custom / gemini-transcribe / vertex-transcribe / azure-mai-transcribe のいずれかを指定してください"), v.EndpointType)
@@ -194,6 +194,12 @@ func speechFromView(v SpeechView) (*SpeechConfig, error) {
 	// browser provider uses the WebView's own recognizer.
 	if s.Provider == ProviderBrowser {
 		return &s, nil
+	}
+	if s.Provider == ProviderLive && s.EndpointType != EndpointOpenAI && s.EndpointType != EndpointGemini {
+		return nil, errors.New(i18n.T("ライブ書き起こしは OpenAI または Gemini API を指定してください"))
+	}
+	if s.Provider == ProviderLive && s.APIKey == "" {
+		return nil, errors.New(i18n.T("ライブ書き起こしの API Key を指定してください"))
 	}
 	switch {
 	case s.EndpointType == EndpointVertex:

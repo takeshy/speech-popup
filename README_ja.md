@@ -31,6 +31,8 @@ Wails 製の常駐型 **音声入力ポップアップ**。ホットキーで呼
 
 | 方式 | 設定 | 備考 |
 |---|---|---|
+| OpenAI Live | `provider = "live"`, `endpoint_type = "openai"` | `gpt-live-transcribe`。API Key |
+| Gemini Live | `provider = "live"`, `endpoint_type = "gemini-transcribe"` | `gemini-3.5-transcribe-live`。API Key |
 | OpenAI | `endpoint_type = "openai"` | `POST {base_url}/audio/transcriptions`。`whisper-1` / `gpt-4o-transcribe` など |
 | OpenAI 互換 (自前ホスト) | `endpoint_type = "custom"` | 同上。Groq・LM Studio・vLLM など |
 | whisper.cpp server | `endpoint_type = "whisper-cpp"` | `POST {base_url}/inference`。ローカルの平文 HTTP を許可。Model 不要 |
@@ -167,7 +169,8 @@ height = 300
 restore_focus = true
 
 [speech]
-# "browser" (WebView の音声認識、既定) | "openai-compatible" (録音して STT へ POST)
+# "browser" (WebView の音声認識、既定) | "live" (OpenAI/Gemini のライブ認識)
+# | "openai-compatible" (録音して STT へ POST)
 provider = "browser"
 # "openai" | "whisper-cpp" | "custom" | "gemini-transcribe" | "vertex-transcribe"
 endpoint_type = "openai"
@@ -209,6 +212,8 @@ accelerator = "Ctrl+8"   # A-Z, 0-9, F1-F24 + Ctrl/Shift/Alt/Win   # A-Z, 0-9, F
 ```
 
 ### サービスごとの設定の記憶
+
+方式を **ライブ書き起こし** にすると、OpenAI は `gpt-live-transcribe`、Gemini API は `gemini-3.5-transcribe-live` を使用します。途中結果を入力欄へ表示し、確定結果だけに置換・音声コマンド・コピーして閉じる合図を適用します。ライブ方式では Base URL と Model は固定され、OpenAI または Gemini API と API Key が必要です。接続とAPIキーは Go バックエンド側で扱われ、WebSocket URLには含めません。
 
 **Base URL・API Key・Model・言語・Vertex のプロジェクト ID** はサービスごとに記憶し、切り替えると前回の値を復元します。初めて選ぶサービスには初期値が入り、キーは空欄になります。**保存**すると全サービスの設定が `config.toml` に保存され、アプリ再起動後も保持されます。保存せず閉じた変更は破棄されます。無音秒数・自動録音・置換ルールは共通設定です。
 

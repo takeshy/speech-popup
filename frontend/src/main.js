@@ -8,6 +8,7 @@ import { defaultSendPhrase, initialSendPhrase, sendPhraseLanguage } from "./send
 import { speechLanguageOptions } from "./speech_languages.js";
 import { createRecorder, speechSupported } from "./recorder.js";
 import { browserSpeechSupported, createBrowserRecognizer } from "./browser_speech.js";
+import { createLiveRecognizer } from "./live_recognizer.js";
 import { createAudioMeter } from "./meter.js";
 import { createTextEditor } from "./editor.js";
 import { createAutoSizer } from "./autosize.js";
@@ -177,6 +178,21 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     return await app.SpeechHTTPRequest(request);
   }
 
+  const liveEventHandlers = new Set();
+  globalThis.window?.runtime?.EventsOn?.("speech:live", event => {
+    for (const handler of liveEventHandlers) handler(event);
+  });
+  const liveTransport = {
+    start: () => appBinding().StartLiveSpeech(),
+    send: (sessionId, audio) => appBinding().SendLiveSpeechAudio(sessionId, audio),
+    finish: sessionId => appBinding().FinishLiveSpeech(sessionId),
+    stop: () => appBinding().StopLiveSpeech(),
+    onEvent: handler => {
+      liveEventHandlers.add(handler);
+      return () => liveEventHandlers.delete(handler);
+    }
+  };
+
   // ---- history ------------------------------------------------------------
 
   function persistHistory() {
@@ -261,8 +277,8 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       "gemini-transcribe": "Gemini",
       "vertex-transcribe": "Vertex AI"
     };
-    const name = speech?.provider === "browser"
-      ? t("ブラウザ")
+    const name = speech?.provider === "browser" ? t("ブラウザ")
+      : speech?.provider === "live" ? `${names[speech?.endpointType] ?? t("未設定")} Live`
       : names[speech?.endpointType] ?? t("未設定");
     speechProviderEl.textContent = t("書き起こし: {0}", name);
   }
@@ -294,7 +310,8 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   // expose the same interface so the UI never branches on the provider again.
   function buildEngine() {
     const provider = speechSettings().provider;
-    if (engine && engineProvider === provider) return engine;
+    const engineKey = `${provider}:${speechSettings().endpointType}`;
+    if (engine && engineProvider === engineKey) return engine;
     engine?.discard();
     const options = {
       getSettings: speechSettings,
@@ -322,12 +339,13 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
         }
         renderEngineState(state);
       },
-      transport: speechTransport
+      transport: speechTransport,
+      liveTransport
     };
-    engine = provider === "browser"
-      ? createBrowserRecognizer(options)
+    engine = provider === "browser" ? createBrowserRecognizer(options)
+      : provider === "live" ? createLiveRecognizer(options)
       : createRecorder(options);
-    engineProvider = provider;
+    engineProvider = engineKey;
     return engine;
   }
 
@@ -771,18 +789,27 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   // Only the fields the selected service actually uses stay visible, so a
   // stale Base URL or key cannot look as if it applies to Gemini or Vertex.
   function updateSpeechFieldVisibility() {
-    renderSpeechLanguages();
     const browser = cfgFields.speechProvider.value === "browser";
+    const live = cfgFields.speechProvider.value === "live";
+    for (const option of cfgFields.speechEndpoint.options) {
+      option.disabled = live && !["openai", "gemini-transcribe"].includes(option.value);
+    }
+    if (live && !["openai", "gemini-transcribe"].includes(cfgFields.speechEndpoint.value)) {
+      cfgFields.speechEndpoint.value = "openai";
+      applyEndpointPreset();
+      return;
+    }
+    renderSpeechLanguages();
     const endpointType = cfgFields.speechEndpoint.value;
     const google = isGoogleEndpoint(endpointType);
     cfgFields.speechBaseUrl.placeholder = endpointType === "azure-mai-transcribe"
       ? "https://your-resource.cognitiveservices.azure.com" : "https://api.openai.com/v1";
     cfgFields.speechApiKey.placeholder = endpointType === "azure-mai-transcribe" ? "Azure Speech API Key" : "sk-...";
     rows.endpoint.hidden = browser;
-    rows.baseUrl.hidden = browser || google;
+    rows.baseUrl.hidden = browser || google || live;
     rows.apiKey.hidden = browser || endpointType === "whisper-cpp" || endpointType === "vertex-transcribe";
-    rows.model.hidden = browser || google || endpointType === "whisper-cpp";
-    rows.vertex.hidden = browser || endpointType !== "vertex-transcribe";
+    rows.model.hidden = browser || live || google || endpointType === "whisper-cpp";
+    rows.vertex.hidden = browser || live || endpointType !== "vertex-transcribe";
     if (!rows.vertex.hidden) void refreshVertexStatus();
   }
 
@@ -943,7 +970,8 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       await applyUILanguage(config?.uiLanguage || view.uiLanguage);
       // HTTP engines read settings for every retry, so changing credentials
       // or endpoints must leave the retained recording available.
-      if (engine && engineProvider !== speechSettings().provider) {
+      const nextEngineKey = `${speechSettings().provider}:${speechSettings().endpointType}`;
+      if (engine && engineProvider !== nextEngineKey) {
         engine.discard();
         engine = null;
         engineProvider = null;

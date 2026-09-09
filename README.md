@@ -34,6 +34,8 @@ Replacement rules turn a spoken phrase into text that is difficult or impossible
 | Service | Configuration | Authentication |
 |---|---|---|
 | Browser speech recognition | `provider = "browser"` | WebView-dependent |
+| OpenAI Live | `provider = "live"`, `endpoint_type = "openai"` | Your API key; `gpt-live-transcribe` |
+| Gemini Live | `provider = "live"`, `endpoint_type = "gemini-transcribe"` | Your API key; `gemini-3.5-transcribe-live` |
 | OpenAI | `endpoint_type = "openai"` | Your API key |
 | OpenAI compatible / self-hosted | `endpoint_type = "custom"` | As required by your server |
 | whisper.cpp server | `endpoint_type = "whisper-cpp"` | Local server; no model field required |
@@ -126,7 +128,7 @@ height = 300
 restore_focus = true
 
 [speech]
-provider = "browser" # or "openai-compatible" for recorded services
+provider = "browser" # or "live", or "openai-compatible" for recorded services
 endpoint_type = "openai"
 base_url = "https://api.openai.com/v1"
 api_key = "" # stored in plain text
@@ -150,6 +152,8 @@ accelerator = "Ctrl+8"
 ```
 
 ### Remembered service settings
+
+Choose **Live transcription** to use `gpt-live-transcribe` with OpenAI or `gemini-3.5-transcribe-live` with the Gemini API. Interim text is shown in the editor; replacements, voice commands, and the copy-and-close phrase run only on final text. Live Base URLs and models are fixed, and an API key is required. The Go backend owns the connection and credentials, so the key is not placed in the WebSocket URL.
 
 Settings remembers each service's **Base URL, API Key, Model, language, and Vertex project ID**. Switching services restores its previous values; a service used for the first time starts with its defaults and an empty key. Choose **Save** to persist all service profiles in `config.toml` across app restarts. Closing without saving discards edits. Silence duration, automatic recording and the replacement rules remain shared settings.
 

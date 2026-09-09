@@ -39,6 +39,30 @@ func TestFromViewAcceptsARecordedConfiguration(t *testing.T) {
 	}
 }
 
+func TestFromViewAcceptsLiveOpenAIAndGeminiOnly(t *testing.T) {
+	for _, endpoint := range []string{EndpointOpenAI, EndpointGemini} {
+		v := validView()
+		v.Speech.Provider = ProviderLive
+		v.Speech.EndpointType = endpoint
+		v.Speech.APIKey = "test-key"
+		if _, err := FromView(v); err != nil {
+			t.Fatalf("live %s: %v", endpoint, err)
+		}
+	}
+	v := validView()
+	v.Speech.Provider = ProviderLive
+	v.Speech.EndpointType = EndpointCustom
+	v.Speech.APIKey = "test-key"
+	if _, err := FromView(v); err == nil {
+		t.Fatal("live custom endpoint was accepted")
+	}
+	v.Speech.EndpointType = EndpointOpenAI
+	v.Speech.APIKey = ""
+	if _, err := FromView(v); err == nil {
+		t.Fatal("live OpenAI without a key was accepted")
+	}
+}
+
 func TestFromViewRejectsBadValues(t *testing.T) {
 	cases := map[string]func(*View){
 		"ウィンドウサイズ":  func(v *View) { v.Window.Width = 10 },

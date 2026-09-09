@@ -48,8 +48,8 @@ type SpeechConfig struct {
 	SendPhraseProfiles map[string]string
 	Profiles           map[string]SpeechProfile
 
-	// Provider is "browser" (the WebView's own SpeechRecognition, live
-	// dictation) or "openai-compatible" (record, then POST the audio).
+	// Provider is "browser" (the WebView's own SpeechRecognition), "live"
+	// (provider WebSocket), or "openai-compatible" (record, then POST audio).
 	Provider string
 	// EndpointType selects the request shape used by "openai-compatible":
 	// openai / custom (POST /audio/transcriptions), whisper-cpp
@@ -93,6 +93,7 @@ const (
 const (
 	ProviderBrowser = "browser"
 	ProviderHTTP    = "openai-compatible"
+	ProviderLive    = "live"
 )
 
 // IsGoogleEndpoint reports whether endpointType uses the Gemini
@@ -345,7 +346,7 @@ func (c *Config) apply(section, key, value string) {
 	case "speech":
 		switch key {
 		case "provider":
-			if value == ProviderBrowser || value == ProviderHTTP {
+			if value == ProviderBrowser || value == ProviderHTTP || value == ProviderLive {
 				c.Speech.Provider = value
 			}
 		case "endpoint_type":

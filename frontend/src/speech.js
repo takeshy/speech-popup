@@ -211,6 +211,19 @@ export async function recordingsToWav(clips, signal) {
 // validateSpeechSettings rejects a configuration before the microphone is
 // opened, and returns the endpoint URL the request will use.
 export function validateSpeechSettings(settings) {
+  if (settings.provider === "live") {
+    if (!["openai", "gemini-transcribe"].includes(settings.endpointType)) {
+      throw new Error(t("ライブ書き起こしは OpenAI または Gemini API を指定してください。"));
+    }
+    if (!settings.apiKey.trim()) throw new Error(t("ライブ書き起こしの API Key を設定してください。"));
+    const language = settings.language.trim();
+    if (language && language.toLowerCase() !== "auto" && !/^[a-z]{2,3}(?:-[a-z0-9]+)*$/i.test(language)) {
+      throw new Error(t("言語は auto か BCP-47 (ja / en-US など) で指定してください。"));
+    }
+    return settings.endpointType === "openai"
+      ? "wss://api.openai.com/v1/realtime?intent=transcription"
+      : "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+  }
   const url = transcriptionURL(settings.baseUrl, settings.endpointType, settings.vertexProjectId ?? "");
   if (settings.endpointType === "azure-mai-transcribe" && !settings.apiKey.trim()) {
     throw new Error(t("Azure MAI Transcribe の API Key を設定してください。"));

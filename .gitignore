@@ -9,3 +9,4 @@ node_modules/
 # Local Azure diagnostic credential
 /azure_key.txt
 /gemini.key
+/openai.key
