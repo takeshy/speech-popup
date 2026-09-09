@@ -54,6 +54,7 @@ type SpeechView struct {
 	Language           string                   `json:"language"`
 	SilenceSeconds     int                      `json:"silenceSeconds"`
 	SendPhrase         string                   `json:"sendPhrase"`
+	Replacements       string                   `json:"replacements"`
 	VertexProjectID    string                   `json:"vertexProjectId"`
 	AutoStart          bool                     `json:"autoStart"`
 }
@@ -76,6 +77,7 @@ func ToView(c *Config) View {
 	v.Speech.ExclamationPhrases = cloneSendPhrases(c.Speech.ExclamationPhrases)
 	v.Speech.SendPhrase = c.Speech.SendPhrase
 	v.Speech.SendPhraseProfiles = cloneSendPhrases(c.Speech.SendPhraseProfiles)
+	v.Speech.Replacements = c.Speech.Replacements
 	v.Speech.QuestionPhrases = cloneSendPhrases(c.Speech.QuestionPhrases)
 	v.Speech.NewlinePhrases = cloneSendPhrases(c.Speech.NewlinePhrases)
 	v.Speech.VertexProjectID = c.Speech.VertexProjectID
@@ -88,6 +90,10 @@ func ToView(c *Config) View {
 	v.Hotkey.Accelerator = c.Hotkey.Accelerator
 	return v
 }
+
+// A rule list lives on one line of config.toml, so it is bounded rather than
+// allowed to grow until the file is unreadable.
+const maxReplacementChars = 4000
 
 var (
 	projectIDPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
@@ -172,6 +178,10 @@ func speechFromView(v SpeechView) (*SpeechConfig, error) {
 	s.NewlinePhrases = cloneSendPhrases(v.NewlinePhrases)
 	s.VertexProjectID = strings.TrimSpace(v.VertexProjectID)
 	s.AutoStart = v.AutoStart
+	s.Replacements = strings.TrimSpace(v.Replacements)
+	if len([]rune(s.Replacements)) > maxReplacementChars {
+		return nil, fmt.Errorf(i18n.T("置換ルールは全体で %d 文字までにしてください"), maxReplacementChars)
+	}
 
 	if v.SilenceSeconds < 0 || v.SilenceSeconds > 10 {
 		return nil, errors.New(i18n.T("発話を区切る無音は 0〜10 秒の範囲で指定してください"))

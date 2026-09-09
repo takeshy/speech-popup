@@ -30,9 +30,13 @@ func PrepareEndpoint(endpoint string) string {
 // RunClientCommand sends a single command to the daemon and prints the
 // response. It returns an error both for transport failures and for
 // "error:" responses.
-func RunClientCommand(command string) error {
+func RunClientCommand(command string, opts Options) error {
 	if !IsValidCommand(command) {
 		return fmt.Errorf("unknown command %q (expected toggle|show|hide|quit)", command)
+	}
+	line, err := EncodeCommand(command, opts)
+	if err != nil {
+		return err
 	}
 	endpoint := Endpoint()
 	conn, err := dial(endpoint, time.Second)
@@ -42,7 +46,7 @@ func RunClientCommand(command string) error {
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 
-	if _, err := conn.Write([]byte(command + "\n")); err != nil {
+	if _, err := conn.Write([]byte(line + "\n")); err != nil {
 		return fmt.Errorf("failed to send command: %w", err)
 	}
 	response, err := readLine(conn)

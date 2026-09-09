@@ -3,6 +3,7 @@ import test from "node:test";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { speechDraft, convertSpokenSymbol } from "../frontend/src/speech.js";
+import { applyReplacementRules } from "../frontend/src/replacements.js";
 
 const load = (file, context, factory) => vm.runInNewContext(
   readFileSync(new URL(`../frontend/src/${file}.js`, import.meta.url), "utf8")
@@ -50,10 +51,41 @@ test("recorder converts question commands on manual stop or silence, including r
   }
 });
 
+test("a send phrase by itself still asks the recorder to close", async () => {
+  let clock = 3000;
+  let sent = null;
+  const create = load("recorder", {
+    t: x => x, speechDraft, AbortController, Blob, performance: { now: () => clock }, setTimeout, clearTimeout,
+    navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) } },
+    OfflineAudioContext: class {},
+    MediaRecorder: class {
+      static isTypeSupported() { return true; }
+      state = "inactive";
+      start() { this.state = "recording"; }
+      stop() {
+        this.state = "inactive";
+        queueMicrotask(() => {
+          this.ondataavailable?.({ data: new Blob(["audio"]) });
+          void this.onstop?.();
+        });
+      }
+    },
+    validateSpeechSettings() {}, recordingsToWav: async () => new Blob(["wav"]),
+    transcribeSpeech: async () => "これで終わります", watchSpeechSilence: () => () => {}
+  }, "createRecorder");
+  const recorder = create({ getSettings: () => ({ silenceSeconds: 0, sendPhrase: "これで終わります" }),
+    getBase: () => "", getText: () => "", onInput() {}, onSend: text => { sent = text; }, onState() {} });
+  await recorder.toggle();
+  clock = 6001;
+  await recorder.toggle();
+  await tick();
+  assert.equal(sent, "");
+});
+
 test("browser preserves punctuation and converts question commands only on final results", async () => {
   let current, text = "";
   const create = load("browser_speech", {
-    t: x => x, speechDraft, convertSpokenSymbol,
+    t: x => x, speechDraft, convertSpokenSymbol, applyReplacementRules,
     navigator: { language: "ja", mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } },
     SpeechRecognition: class { constructor() { current = this; } start() {} abort() {} }
   }, "createBrowserRecognizer");
@@ -77,7 +109,7 @@ test("editing live dictation consumes displayed results so revisions cannot resu
   let writes = 0;
   let sends = 0;
   const create = load("browser_speech", {
-    t: x => x, speechDraft, convertSpokenSymbol,
+    t: x => x, speechDraft, convertSpokenSymbol, applyReplacementRules,
     navigator: { language: "ja", mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } },
     SpeechRecognition: class { constructor() { current = this; } start() {} abort() {} },
     watchSpeechSilence: (_stream, _seconds, callback, status) => { silence = callback; status(true); return () => {}; }
@@ -111,6 +143,7 @@ test("silence converts queued utterances while the microphone and next recording
   let clock = 0;
   const boundaries = [];
   const replies = [];
+  const states = [];
   let text = "";
   let streams = 0, trackStops = 0, starts = 0, requests = 0;
   const create = load("recorder", {
@@ -139,7 +172,8 @@ test("silence converts queued utterances while the microphone and next recording
     }
   }, "createRecorder");
   const recorder = create({ getSettings: () => ({ silenceSeconds: 1, sendPhrase: "" }),
-    getBase: () => text, onInput: value => { text = value; }, onSend() { assert.fail("unexpected send"); }, onState() {} });
+    getBase: () => text, onInput: value => { text = value; }, onSend() { assert.fail("unexpected send"); },
+    onState: state => states.push(state) });
   t.after(() => recorder.discard());
   await recorder.toggle();
   boundaries[0].voice();
@@ -154,6 +188,8 @@ test("silence converts queued utterances while the microphone and next recording
   await tick();
   assert.equal(starts, 3, "next utterance records while earlier requests wait");
   assert.equal(requests, 1, "transcriptions must remain ordered");
+  assert.equal(states.at(-1).status, "recording");
+  assert.equal(states.at(-1).backgroundTranscribing, true);
   text = "edited";
   replies.shift()("hello");
   await tick();
@@ -162,6 +198,7 @@ test("silence converts queued utterances while the microphone and next recording
   replies.shift()("。");
   await tick();
   assert.equal(text, "edited hello。");
+  assert.equal(states.at(-1).backgroundTranscribing, false);
   assert.equal(recorder.recording(), true);
   await recorder.toggle();
   await tick();
@@ -170,13 +207,52 @@ test("silence converts queued utterances while the microphone and next recording
   assert.equal(requests, 2, "the silent tail is not sent for transcription");
 });
 
+test("an empty automatic transcription is discarded while recording continues", async (t) => {
+  let clock = 0;
+  let silence;
+  let errors = [];
+  const create = load("recorder", {
+    t: x => x, speechDraft, AbortController, Blob, performance: { now: () => clock += 3000 }, setTimeout, clearTimeout,
+    navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) } },
+    OfflineAudioContext: class {},
+    MediaRecorder: class {
+      static isTypeSupported() { return true; }
+      state = "inactive";
+      start() { this.state = "recording"; }
+      stop() {
+        this.state = "inactive";
+        queueMicrotask(() => {
+          this.ondataavailable?.({ data: new Blob(["background noise"]) });
+          void this.onstop?.();
+        });
+      }
+    },
+    validateSpeechSettings() {}, recordingsToWav: async () => new Blob(["wav"]),
+    transcribeSpeech: async () => "",
+    watchSpeechSilence: (_stream, _seconds, callback, status, voice) => {
+      silence = callback; status(true); voice(); return () => {};
+    }
+  }, "createRecorder");
+  const recorder = create({ getSettings: () => ({ silenceSeconds: 1, sendPhrase: "" }),
+    getBase: () => "", getText: () => "", onInput() { assert.fail("unexpected transcript"); },
+    onSend() { assert.fail("unexpected send"); }, onState: state => { if (state.error) errors.push(state.error); } });
+  try {
+    await recorder.toggle();
+    silence();
+    await tick();
+    assert.equal(recorder.recording(), true);
+    assert.equal(recorder.state().retainedCount, 0);
+    assert.deepEqual(errors, []);
+  } finally { recorder.discard(); }
+});
+
 test("browser revisions preserve the suffix and cursor moves affect only new segments", async () => {
   let current;
   let text = "left  right", start = 5, end = 5;
   let sent = "";
   const context = () => JSON.stringify([text, start, end]);
   const create = load("browser_speech", {
-    t: x => x, speechDraft, convertSpokenSymbol,
+    t: x => x, speechDraft, convertSpokenSymbol, applyReplacementRules,
     navigator: { language: "en", mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } },
     SpeechRecognition: class { constructor() { current = this; } start() {} abort() {} },
     watchSpeechSilence: () => () => {}
@@ -203,11 +279,12 @@ test("browser revisions preserve the suffix and cursor moves affect only new seg
 });
 
 
-test("stopping within two seconds also cancels an automatic segment waiting to send", async () => {
-  let clock = 0, silence, requests = 0;
+test("starting a new recording abandons audio retained by a failed request", async () => {
+  let clock = 3000;
+  let fail = true;
   const create = load("recorder", {
     t: x => x, speechDraft, AbortController, Blob, performance: { now: () => clock }, setTimeout, clearTimeout,
-    navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) } },
+    navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) } },
     OfflineAudioContext: class {},
     MediaRecorder: class {
       static isTypeSupported() { return true; }
@@ -222,23 +299,26 @@ test("stopping within two seconds also cancels an automatic segment waiting to s
       }
     },
     validateSpeechSettings() {}, recordingsToWav: async () => new Blob(["wav"]),
-    transcribeSpeech: async () => { requests++; return "text"; },
-    watchSpeechSilence: (_stream, _seconds, callback, status) => { silence = callback; status(true); return () => {}; }
+    transcribeSpeech: async () => { if (fail) throw Error("bad clip"); return "fresh text"; },
+    watchSpeechSilence: () => () => {}
   }, "createRecorder");
-  const recorder = create({ getSettings: () => ({ silenceSeconds: 1, sendPhrase: "" }),
-    getBase: () => "", onInput() { assert.fail("unexpected transcript"); }, onSend() {}, onState() {} });
+  let text = "";
+  const recorder = create({ getSettings: () => ({ silenceSeconds: 0, sendPhrase: "" }),
+    getBase: () => "", getText: () => text, onInput: value => { text = value; }, onSend() {},
+    onState() {} });
   try {
     await recorder.toggle();
-    clock = 1100;
-    silence();
-    await tick();
-    assert.equal(requests, 0);
-    assert.equal(recorder.state().retainedCount, 1);
-    clock = 2000;
+    clock = 6001;
     await recorder.toggle();
     await tick();
-    assert.equal(requests, 0);
-    assert.equal(recorder.state().retainedCount, 0);
-    assert.equal(recorder.busy(), false);
+    assert.equal(recorder.state().retainedCount, 1);
+
+    fail = false;
+    await recorder.toggle();
+    assert.equal(recorder.state().retainedCount, 0, "Record starts clean instead of retrying the failed clip");
+    clock = 9002;
+    await recorder.toggle();
+    await tick();
+    assert.equal(text, "fresh text");
   } finally { recorder.discard(); }
 });

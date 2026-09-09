@@ -53,6 +53,8 @@ export const messages = {
   "{0} この WebView にはブラウザ音声認識のバックエンドが無い可能性があります。設定で OpenAI / whisper.cpp / Gemini / Vertex AI を選んでください。": "{0} This WebView may not include a browser speech backend. Select OpenAI / whisper.cpp / Gemini / Vertex AI in Settings.",
   "マイクを準備しています": "Preparing microphone",
   "録音中": "Recording",
+  "録音中・認識中": "Recording and transcribing",
+  "認識中 (録音は継続しています)": "Transcribing (recording continues)",
   "音声を変換しています": "Converting audio",
   "認識しています": "Transcribing",
   "処理中": "Processing",
@@ -132,6 +134,7 @@ export const messages = {
   "設定": "Settings",
   "ヘルプ (キー操作)": "Help (shortcuts)",
   "話した内容がここに入ります (Ctrl+Space で録音)": "Your transcript appears here (Ctrl+Space to record)",
+  "終了するには「{0}」と話してください": "To finish, say “{0}”",
   "入力レベル": "Microphone level",
   "設定を開く": "Open Settings",
   "保持している録音をもう一度認識する (Ctrl+R)": "Transcribe the retained recording again (Ctrl+R)",
@@ -168,5 +171,12 @@ export const messages = {
   "アプリ内でホットキーを登録する (Windows のみ)": "Register a global hotkey (Windows only)",
   "キー": "Keys",
   "コピー": "Copy",
-  "情報": "About"
+  "情報": "About",
+  "置換ルール": "Replacements",
+  "認識が確定したあとに、発話に含まれるこの語を置換します。音声では言えない /daily のようなコマンドや、決まった文章を登録できます。長い語から先に一致し、残りの発話はそのまま続きます (「日記書いて 今日は雨」→「/daily 今日は雨」)。置換後を空にすると、その語を削除します。": "Once recognition is final, these phrases are replaced wherever they appear. Register a command dictation cannot produce, such as /daily, or a sentence you dictate often. The longest phrase matches first and the rest of the dictation follows it (\"daily note today it rained\" becomes \"/daily today it rained\"). An empty replacement deletes the phrase.",
+  "発話": "Spoken",
+  "置換後": "Becomes",
+  "＋ ルールを追加": "+ Add a rule",
+  "この行を削除": "Delete this rule",
+  "日記書いて": "daily note"
 };

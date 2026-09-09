@@ -45,6 +45,7 @@ func TestFromViewRejectsBadValues(t *testing.T) {
 		"provider":  func(v *View) { v.Speech.Provider = "telepathy" },
 		"endpoint":  func(v *View) { v.Speech.EndpointType = "nope" },
 		"無音":        func(v *View) { v.Speech.SilenceSeconds = 99 },
+		"置換ルール":     func(v *View) { v.Speech.Replacements = strings.Repeat("あ", 4001) },
 		"言語":        func(v *View) { v.Speech.Language = "not a tag" },
 		"Model":     func(v *View) { v.Speech.Model = "" },
 		"Base URL":  func(v *View) { v.Speech.BaseURL = "https://user:pw@example.com/v1" },

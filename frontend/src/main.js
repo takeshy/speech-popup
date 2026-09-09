@@ -3,6 +3,7 @@ import { t, getLanguage, setLanguage, localizeDOM } from "./i18n.js";
 // puts the result on the clipboard for the window that had focus before.
 
 import { defaultSpeechCommands, speechCommandsFor, splitCommandPhrases } from "./speech_commands.js";
+import { parseReplacementRules, serializeReplacementRules } from "./replacements.js";
 import { defaultSendPhrase, initialSendPhrase, sendPhraseLanguage } from "./send_phrases.js";
 import { speechLanguageOptions } from "./speech_languages.js";
 import { createRecorder, speechSupported } from "./recorder.js";
@@ -18,6 +19,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   const inputEl = document.getElementById("input");
   const modeEl = document.getElementById("mode");
   const speechProviderEl = document.getElementById("speech-provider");
+  const sendPhraseHintEl = document.getElementById("send-phrase-hint");
   const statusEl = document.getElementById("status");
   const errorEl = document.getElementById("error");
   const errorSettingsButton = document.getElementById("error-settings");
@@ -265,6 +267,12 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     speechProviderEl.textContent = t("書き起こし: {0}", name);
   }
 
+  function renderSendPhraseHint() {
+    const phrase = speechSettings().sendPhrase.trim();
+    sendPhraseHintEl.hidden = !phrase;
+    sendPhraseHintEl.textContent = phrase ? t("終了するには「{0}」と話してください", phrase) : "";
+  }
+
   function speechSettings() {
     const speech = config?.speech ?? {};
     return {
@@ -277,6 +285,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       silenceSeconds: speech.silenceSeconds ?? 0,
       sendPhrase: initialSendPhrase(speech),
       symbolCommands: speechCommandsFor(speech),
+      replacements: parseReplacementRules(speech.replacements ?? ""),
       vertexProjectId: speech.vertexProjectId ?? ""
     };
   }
@@ -296,7 +305,10 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
         editor.applySpeechPrefix(text);
         historyIndex = -1;
       },
-      onSend: (text) => void copyAndClose(text),
+      // A send phrase by itself is still an explicit request to close. Let the
+      // backend see the empty text first because `show --append` may turn it
+      // into a non-empty clipboard value.
+      onSend: (text) => void copyAndClose(text, true),
       onState: (state) => {
         // Chromium embedders such as WebView2 usually ship no speech backend,
         // so browser recognition fails at the network step. Point at the
@@ -333,11 +345,16 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     const ACTIVITY_TITLES = activityTitles();
     const active = state.status !== "idle";
     activityEl.dataset.active = String(active);
-    modeEl.textContent = active ? (ACTIVITY_TITLES[state.status] ?? t("処理中")) : t("待機中");
+    const activityTitle = state.status === "recording" && state.backgroundTranscribing
+      ? t("録音中・認識中")
+      : ACTIVITY_TITLES[state.status] ?? "";
+    modeEl.textContent = active ? (activityTitle || t("処理中")) : t("待機中");
     modeEl.dataset.recording = String(state.status === "recording");
-    activityTitleEl.textContent = ACTIVITY_TITLES[state.status] ?? "";
+    activityTitleEl.textContent = activityTitle;
     activityHintEl.textContent = state.status === "recording"
-      ? (state.silenceHint || t("Ctrl+Space または ● で停止して認識"))
+      ? state.backgroundTranscribing
+        ? t("認識中 (録音は継続しています)")
+        : (state.silenceHint || t("Ctrl+Space または ● で停止して認識"))
       : state.status === "starting"
         ? t("Escape で中止")
         : t("Escape で中止 (録音は保持されます)");
@@ -415,19 +432,26 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
 
   // ---- copy / close -------------------------------------------------------
 
-  async function copyAndClose(explicitText) {
+  async function copyAndClose(explicitText, closeWhenEmpty = false) {
     const text = (explicitText ?? inputEl.value).trim();
-    if (!text) {
-      setStatus(t("コピーする内容がありません。"), true);
-      return;
-    }
+    // Whether an empty popup still copies depends on the marker the caller
+    // asked for with `show --append`, which only the backend knows.
+    let copied = false;
     try {
-      await appBinding()?.CopyToClipboard(text);
+      copied = (await appBinding()?.CopyTranscript(text)) ?? false;
     } catch {
       setStatus(t("コピーに失敗しました。"), true);
       return;
     }
-    addHistory(text);
+    if (!copied) {
+      if (closeWhenEmpty) {
+        closeWithoutCopy();
+        return;
+      }
+      setStatus(t("コピーする内容がありません。"), true);
+      return;
+    }
+    if (text) addHistory(text);
     engine?.discard();
     editor.reset();
     setStatus(t("コピーしました。"), true);
@@ -568,6 +592,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     newlinePhrases = structuredClone(view.speech.newlinePhrases ?? {});
     formPhraseLanguage = sendPhraseLanguage(view.speech.language);
     cfgFields.speechSendPhrase.value = initialSendPhrase(view.speech);
+    fillReplacementRows(view.speech.replacements ?? "");
     fillSymbolCommands();
     formVertexProjectId = view.speech.vertexProjectId ?? "";
     cfgFields.speechAutoStart.checked = view.speech.autoStart;
@@ -597,6 +622,75 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     input.disabled = !custom;
     input.required = custom;
   }
+
+  // Each rule is a row of two fields: what was said, and what it becomes. The
+  // stored form is one line per rule, so the rows own the parsing and nothing
+  // else in the app has to know how a rule is written down.
+  const replacementRows = document.getElementById("replacement-rows");
+  let replacementFields = [];
+  let replacementRowSeq = 0;
+
+  function addReplacementRow(rule = { from: "", to: "" }) {
+    const id = ++replacementRowSeq;
+    const row = document.createElement("div");
+    row.className = "replacement-row";
+    const from = document.createElement("input");
+    from.type = "text";
+    from.id = `cfg-replacement-from-${id}`;
+    from.className = "replacement-from";
+    from.spellcheck = false;
+    from.placeholder = t("日記書いて");
+    from.value = rule.from;
+    const arrow = document.createElement("span");
+    arrow.className = "replacement-arrow";
+    arrow.textContent = "→";
+    // A replacement is often a sentence, so it gets a field that can hold one.
+    const to = document.createElement("textarea");
+    to.id = `cfg-replacement-to-${id}`;
+    to.className = "replacement-to";
+    to.rows = 2;
+    to.spellcheck = false;
+    to.placeholder = "/daily";
+    to.value = rule.to;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.id = `replacement-remove-${id}`;
+    remove.className = "replacement-remove";
+    remove.textContent = "×";
+    remove.title = t("この行を削除");
+    remove.setAttribute("aria-label", t("この行を削除"));
+    remove.addEventListener("click", () => {
+      replacementFields = replacementFields.filter((field) => field.row !== row);
+      row.remove();
+      if (replacementFields.length === 0) addReplacementRow();
+
+    });
+    row.append(from, arrow, to, remove);
+    replacementRows.append(row);
+    replacementFields.push({ row, from, to });
+    return { from, to };
+  }
+
+  function fillReplacementRows(text) {
+    replacementRows.replaceChildren();
+    replacementFields = [];
+    // Numbering restarts with the rows, so a rule's fields keep the same ids
+    // every time the pane is filled.
+    replacementRowSeq = 0;
+    for (const rule of parseReplacementRules(text)) addReplacementRow(rule);
+    // One empty row always waits at the end, so a rule can be added without
+    // reaching for the button first. Empty rows are dropped when saving.
+    addReplacementRow();
+  }
+
+  function readReplacementRules() {
+    return serializeReplacementRules(replacementFields.map((field) => ({ from: field.from.value, to: field.to.value })));
+  }
+
+  document.getElementById("replacement-add").addEventListener("click", () => {
+    const { from } = addReplacementRow();
+    from.focus();
+  });
 
   function renderSpeechLanguages(current = readSpeechLanguage()) {
     const custom = cfgFields.speechLanguage.value === "custom";
@@ -648,6 +742,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
         language: readSpeechLanguage(),
         silenceSeconds: Number(cfgFields.speechSilence.value),
         sendPhrase: cfgFields.speechSendPhrase.value,
+        replacements: readReplacementRules(),
         sendPhraseProfiles: structuredClone(sendPhraseProfiles),
         exclamationPhrases: structuredClone(exclamationPhrases),
         questionPhrases: structuredClone(questionPhrases),
@@ -825,6 +920,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     helpBodyEl.textContent = helpText();
     if (lastEngineState) renderEngineState(lastEngineState);
     renderSpeechProvider();
+    renderSendPhraseHint();
     updateHotkeyGuidance();
     updateSpeechFieldVisibility();
     renderSettingsInfo();
@@ -1032,6 +1128,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       setError(t("設定を読み込めません: {0}", message(caught)));
     }
     renderSpeechProvider();
+    renderSendPhraseHint();
     try {
       const raw = await app.LoadHistory();
       const parsed = JSON.parse(raw);

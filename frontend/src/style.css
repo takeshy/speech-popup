@@ -151,6 +151,16 @@ textarea {
   font: 17px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+.send-phrase-hint {
+  flex: 0 0 auto;
+  margin: 5px 2px 0;
+  color: #526174;
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .activity {
   flex: 0 0 auto;
   display: flex;
@@ -355,6 +365,55 @@ button.primary {
 
 .settings-body h3:first-child {
   margin-top: 0;
+}
+
+/* The two fields of a rule line up with their headers, and the row keeps the
+   delete button at its end whatever the field widths are. */
+.replacement-head,
+.replacement-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1.6fr auto;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.replacement-head {
+  align-items: center;
+  margin-bottom: 2px;
+  color: #526174;
+  font-size: 12px;
+}
+
+/* The replacement is often a sentence, so its field grows while the spoken
+   phrase, the arrow and the delete button stay on the first line. */
+.replacement-row {
+  align-items: start;
+}
+
+.replacement-row input,
+.replacement-row textarea {
+  min-width: 0;
+  width: 100%;
+}
+
+.replacement-row textarea {
+  min-height: 30px;
+  resize: vertical;
+}
+
+.replacement-arrow,
+.replacement-remove {
+  margin-top: 5px;
+}
+
+.replacement-arrow {
+  color: #526174;
+}
+
+.replacement-remove {
+  padding: 2px 8px;
+  line-height: 1.2;
 }
 
 .field-row {

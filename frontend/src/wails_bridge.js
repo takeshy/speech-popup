@@ -8,6 +8,7 @@ const call = (method, ...args) => Call.ByName(`main.App.${method}`, ...args);
 globalThis.window.go = {
   main: {
     App: {
+      CopyTranscript: (text) => call("CopyTranscript", text),
       CopyToClipboard: (text) => call("CopyToClipboard", text),
       GetAppInfo: () => call("GetAppInfo"),
       SetUILanguage: (language) => call("SetUILanguage", language),

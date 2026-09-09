@@ -31,6 +31,7 @@ api_key = "sk-\"quoted\""
 model = ""
 language = "ja"
 silence_seconds = 5
+replacements = "日記書いて => /daily\n議事録 => /minutes"
 send_phrase = "終わり"
 auto_start = false
 
@@ -49,6 +50,9 @@ paste_key = "ctrl+v"
 	}
 	if cfg.Speech.APIKey != `sk-"quoted"` {
 		t.Errorf("api_key = %q", cfg.Speech.APIKey)
+	}
+	if cfg.Speech.Replacements != "日記書いて => /daily\n議事録 => /minutes" {
+		t.Fatalf("replacements: %q", cfg.Speech.Replacements)
 	}
 	if cfg.Speech.SilenceSeconds != 5 || cfg.Speech.SendPhrase != "終わり" || cfg.Speech.AutoStart {
 		t.Errorf("speech = %+v", cfg.Speech)

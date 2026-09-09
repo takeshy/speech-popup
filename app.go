@@ -44,6 +44,10 @@ type App struct {
 	// pendingOverlay asks the frontend to open Settings or Help as soon as the
 	// window is shown (used by the tray menu).
 	pendingOverlay string
+	// pendingAppend is the marker `show --append` asked for: it is added to the
+	// transcript this popup copies, so the caller can tell its own paste from
+	// any other, and can tell "nothing was dictated" from "not mine".
+	pendingAppend string
 
 	actionMu       sync.Mutex
 	mu             sync.Mutex
@@ -117,10 +121,10 @@ func (a *App) ServiceShutdown() error {
 	return nil
 }
 
-func (a *App) handleCommand(command string) error {
+func (a *App) handleCommand(command string, opts ipc.Options) error {
 	switch command {
 	case "show":
-		a.ShowPopup()
+		a.showPopupWithAppend(opts.Append)
 	case "hide":
 		a.HidePopup()
 	case "toggle":
@@ -233,6 +237,18 @@ func (a *App) ShowPopupWithOverlay(overlay string) {
 	a.showPopupLocked()
 }
 
+// showPopupWithAppend shows the popup and records the marker for the copy that
+// closes it. A show without one clears any marker left over, so a popup opened
+// by the hotkey never carries the previous caller's text.
+func (a *App) showPopupWithAppend(append string) {
+	a.actionMu.Lock()
+	defer a.actionMu.Unlock()
+	a.mu.Lock()
+	a.pendingAppend = append
+	a.mu.Unlock()
+	a.showPopupLocked()
+}
+
 func (a *App) showPopupLocked() {
 	a.mu.Lock()
 	if !a.ready {
@@ -279,6 +295,7 @@ func (a *App) hidePopupLocked() {
 	wasVisible := a.visible
 	a.visible = false
 	a.pendingShow = false
+	a.pendingAppend = ""
 	doPaste := a.pasteAfterHide
 	a.pasteAfterHide = false
 	a.mu.Unlock()
@@ -355,11 +372,45 @@ func (a *App) ReadClipboard() string {
 	return text
 }
 
-// CopyToClipboard places the transcribed text on the clipboard. It arms the
-// auto-paste step performed by HidePopup when enabled.
+// CopyTranscript copies what the popup holds, with the marker from
+// `show --append` added. The marker is appended even when nothing was
+// dictated, so pressing Enter on an empty popup is a message the caller can
+// act on (typically: the user is done talking) rather than silence.
+// It reports false when there was nothing to copy at all, which the frontend
+// tells apart from a clipboard failure.
+func (a *App) CopyTranscript(text string) (bool, error) {
+	a.actionMu.Lock()
+	defer a.actionMu.Unlock()
+	a.mu.Lock()
+	marker := a.pendingAppend
+	a.mu.Unlock()
+	if marker != "" {
+		if text != "" && !strings.HasSuffix(text, " ") {
+			text += " "
+		}
+		text += marker
+	}
+	if text == "" {
+		return false, nil
+	}
+	if err := a.copyToClipboard(text); err != nil {
+		return false, err
+	}
+	a.mu.Lock()
+	a.pendingAppend = ""
+	a.mu.Unlock()
+	return true, nil
+}
+
+// CopyToClipboard places text on the clipboard. It arms the auto-paste step
+// performed by HidePopup when enabled.
 func (a *App) CopyToClipboard(text string) error {
 	a.actionMu.Lock()
 	defer a.actionMu.Unlock()
+	return a.copyToClipboard(text)
+}
+
+func (a *App) copyToClipboard(text string) error {
 	a.mu.Lock()
 	a.pasteAfterHide = false
 	a.mu.Unlock()

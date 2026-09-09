@@ -23,6 +23,12 @@ This project adapts the resident popup and clipboard workflow from [skk-popup](h
   <img src="docs/setting2.png" alt="Window, clipboard, and hotkey settings" width="49%">
 </p>
 
+#### Replacement rules
+
+Replacement rules turn a spoken phrase into text that is difficult or impossible to dictate directly, such as `/daily`. Add one row per phrase in Settings; the detailed matching behavior is described under [Remembered service settings](#remembered-service-settings).
+
+![Replacement rules in Settings](docs/replacements.png)
+
 ## Speech services
 
 | Service | Configuration | Authentication |
@@ -52,8 +58,9 @@ The Windows version is available from the [Microsoft Store](https://apps.microso
 1. Start the app. It stays in the notification area with a microphone icon.
 2. Press **Ctrl+8** (Windows default), or choose Open speech input from the tray menu.
 3. Speak. Recording starts on opening by default. Pauses segment speech for transcription while recording continues. Ctrl+Space stops recording.
-4. Edit the resulting text, then press **Enter** to copy, close and paste into the previous window.
-5. Alternatively, end with a configured send phrase (defaults follow the speech language, such as `over` for English) to remove that phrase and copy/close automatically.
+4. The final transcript applies configured **replacement rules** before it appears (for example, `daily note` → `/daily`), and remains editable.
+5. Press **Enter** to copy, close and paste into the previous window.
+6. Alternatively, end with a configured send phrase (defaults follow the speech language, such as `I'm done speaking` for English) to remove that phrase and copy/close automatically.
 
 The header displays the current transcription service. The tray menu provides Settings, Help and Quit even if the hotkey fails.
 
@@ -77,7 +84,7 @@ The header displays the current transcription service. The tray menu provides Se
 
 Ctrl+K at the end of a line removes the newline and joins the next line. Editing keys match skk-popup. Ctrl+A means **start of line**; use Ctrl+O for select all.
 
-A failed transcription retains its audio for retry, including while you open Settings or correct credentials/endpoints. Switching between browser and recorded recognition discards it. Retry audio is kept in memory, not across app restarts. A successful transcription consumes the retained recording; copying clears the text and remaining audio.
+A failed transcription retains its audio for Retry, including while you open Settings or correct credentials/endpoints. Retry sends that audio in a new request; starting a new recording discards the failed audio and sends only the new clip. Switching between browser and recorded recognition also discards it. Retry audio is kept in memory, not across app restarts. A successful transcription consumes the retained recording; copying clears the text and remaining audio.
 
 Text history keeps the latest 30 unique entries and survives restarts. When the popup reopens, it saves the previous text to history even if you never copied it, and clears the input for a new entry. Use Ctrl+↑ / Ctrl+↓ to retrieve it. External clipboard text is also captured on opening. A draft that has not yet been copied or archived is only kept in memory until exit.
 
@@ -126,7 +133,8 @@ api_key = "" # stored in plain text
 model = "whisper-1"
 language = "auto" # speech language, not the UI language
 silence_seconds = 3 # 0 disables silence detection
-send_phrase = "おしまい"
+send_phrase = "これで終わります"
+replacements = "日記書いて => /daily" # one rule per line, for text you cannot dictate
 vertex_project_id = ""
 auto_start = true
 
@@ -143,11 +151,13 @@ accelerator = "Ctrl+8"
 
 ### Remembered service settings
 
-Settings remembers each service's **Base URL, API Key, Model, language, and Vertex project ID**. Switching services restores its previous values; a service used for the first time starts with its defaults and an empty key. Choose **Save** to persist all service profiles in `config.toml` across app restarts. Closing without saving discards edits. Silence duration and automatic recording remain shared settings.
+Settings remembers each service's **Base URL, API Key, Model, language, and Vertex project ID**. Switching services restores its previous values; a service used for the first time starts with its defaults and an empty key. Choose **Save** to persist all service profiles in `config.toml` across app restarts. Closing without saving discards edits. Silence duration, automatic recording and the replacement rules remain shared settings.
 
 **Speech language** is a dropdown with service-specific codes and native language names alongside the UI language. OpenAI uses the documented Whisper language suggestions, whisper.cpp uses its language catalog, Gemini/Vertex use regional codes, and Azure MAI uses its model's language list. Browser and self-hosted support depends on the installed engine/model. Choose **Other (language code)** for unlisted languages; existing codes are preserved. Automatic detection remains available for HTTP services; the browser option uses the WebView language.
 
-**Voice commands** have four editable targets: **?**, **line break**, **!**, and **copy and close**. Settings remembers phrases per speech language and restores them when you switch languages or services. Defaults are provided only for Japanese (クエスチョン / クエスチョンマーク, エンター, びっくり, おしまい) and English (question / question mark, enter, exclamation, over). Other languages start empty. Existing saved phrases are retained.
+**Voice commands** have four editable targets: **?**, **line break**, **!**, and **copy and close**. Settings remembers phrases per speech language and restores them when you switch languages or services. Defaults are provided only for Japanese (クエスチョン / クエスチョンマーク, エンター, びっくり, これで終わります) and English (question / question mark, enter, exclamation, I'm done speaking). Other languages start empty. Existing saved phrases are retained.
+
+**Replacements** rewrite recognized text once it is final. Each rule is a row of two fields in Settings - the spoken phrase, and what it becomes - with **+ Add a rule** and a **×** on each row. They exist for text dictation cannot produce: `/daily` is unsayable in Japanese, so a rule from `日記書いて` to `/daily` lets the sentence be spoken and the command be pasted. A replacement may also be a whole sentence, including line breaks. The longest phrase matches first, every occurrence is replaced, and the rest of the dictation follows the replacement, so "daily note today it rained" becomes "/daily today it rained". Punctuation the recognizer adds right after the phrase is consumed with it, so a phrase spoken as a sentence still yields `/infographic` rather than `/infographic。`, and one space separates the replacement from whatever follows. Latin phrases match whole words, case-insensitively; an empty replacement deletes the phrase. Rules are shared by all speech languages, are stored one per line in `config.toml` (line breaks inside a replacement are escaped), and are capped at 4000 characters in total.
 
 Each field accepts words or multi-word phrases, with alternatives separated by commas: for example, `se acabo, se acabó`. Match the spelling the recognition service actually returns. An empty field disables that action; the reset buttons restore the current language's defaults. A phrase cannot be assigned to multiple actions. Changes are persisted on **Save**, including disabled commands. Regional variants share settings (Traditional Chinese is separate). When speech language is automatic, commands use the WebView's preferred language, not the detected language of each transcript.
 
@@ -216,7 +226,19 @@ speech-popup hide       hide the popup
 speech-popup quit       quit
 speech-popup status     show daemon state and config/log paths
 speech-popup version    print version
+
+speech-popup show --append "send it"
 ```
+
+`--append` gives the popup a marker to add when it copies. The marker is
+appended even when nothing was dictated, so the caller can tell its own paste
+from any other, and can tell "the user pressed Enter on an empty popup" from
+"this paste is not mine". It applies to that popup only: closing it, or opening
+one without the option, forgets it. Obsidian's LLM Hub chat passes a token of its own
+(`⟦voice-chat⟧`) so that a paste it receives is known to come from a popup it
+opened: with words before the token it is submitted as the answer, with nothing
+before it the conversation ends, and once that conversation is over the token is
+dropped and the words are kept in the composer.
 
 If Ctrl+8 does not work, try `speech-popup show` and inspect `speech-popup.log`. Another app may own the hotkey (Windows error 1409); choose a different key in Settings. Ctrl+8 is intercepted globally while registered, including in browsers.
 
@@ -243,11 +265,13 @@ The UI uses Japanese source messages with an English catalog in `frontend/src/me
 
 ### Dictation position and punctuation
 
+The first three seconds of a recording session are never split automatically, and recording continues if no voice-like audio has been detected.
+
 Recognition inserts at the current caret, or replaces the selected text, while preserving the text after it. Moving the caret during recording changes where the next result is inserted. Undo restores the text and selection. Browser interim results can be revised in place; moving the caret commits what is already displayed, and new recognition segments use the new position.
 
 Punctuation returned by the service, including Japanese `。` and `、`, is generally preserved. A full stop (`。`, `.`, `．`, `۔`, `।`, `॥`, or `։`) immediately before `!` or `?` (including full-width variants and Arabic `؟`) is removed, including when the mark is dictated separately after the caret. This does not cross a line break. Configured voice-command phrases match only the end of final recognition; they also work on manual stop and with **Pause between utterances** set to 0. A newline command inserts a line break without copying or closing; the send command takes precedence. Only the phrases configured for the current speech language are active. Other text is left unchanged, so `改行` or `new line` only becomes a command if you explicitly register it. Shift+Enter also inserts a line break.
 
-For recorded services, a pause splits the recording into requests; the microphone stays open while earlier requests run. Two audible samples at least 100 ms apart and no more than 300 ms apart now arm the silence timeout, instead of requiring 250 ms of uninterrupted loud audio. Submission still waits for the configured silence duration; the delay has not become zero. If an isolated word still does not produce a result, stop with Ctrl+Space to submit it explicitly and distinguish silence detection from service behavior. Recognition accuracy still depends on the service.
+For recorded services, a pause splits the recording into requests; the microphone stays open while earlier requests run. What counts as quiet is measured against the room rather than a fixed level: the quietest moment of the last five seconds is the floor, speech is what rises clearly above it, and falling back near it counts as the pause. A fan, a keyboard or a conversation next door therefore still reaches silence, and a soft voice in a quiet room is still heard. Only the duration is configurable. Two audible samples at least 100 ms apart and no more than 300 ms apart arm the silence timeout, instead of requiring 250 ms of uninterrupted loud audio. Submission still waits for the configured silence duration; the delay has not become zero. If an isolated word still does not produce a result, stop with Ctrl+Space to submit it explicitly and distinguish silence detection from service behavior. Recognition accuracy still depends on the service.
 
 The popup grows with line breaks and wrapped text, within the available screen height. Beyond that, the editor scrolls to keep the insertion point visible. Removing text shrinks it toward the configured height; automatic sizing does not change your saved settings.
 

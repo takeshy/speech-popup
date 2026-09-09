@@ -1,6 +1,6 @@
 // Only Japanese and English have built-in send phrases. Other languages start
 // disabled, and existing saved overrides are preserved.
-const DEFAULTS = { en: "over", ja: "おしまい" };
+const DEFAULTS = { en: "I'm done speaking", ja: "これで終わります" };
 
 export function sendPhraseLanguage(language, detectedLocale = globalThis.navigator?.languages?.[0] ?? globalThis.navigator?.language ?? "en") {
   const locale = (!language || language.toLowerCase() === "auto" ? detectedLocale : language).replaceAll("_", "-").toLowerCase();

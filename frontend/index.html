@@ -23,6 +23,7 @@
     <button id="menu-help" class="menu-row" type="button" role="menuitem">ヘルプ (キー操作)</button>
   </div>
   <textarea id="input" autocomplete="off" spellcheck="false" placeholder="話した内容がここに入ります (Ctrl+Space で録音)" autofocus></textarea>
+  <p id="send-phrase-hint" class="send-phrase-hint" hidden></p>
   <div id="activity" class="activity" data-active="false">
     <div id="meter" class="meter" role="img" aria-label="入力レベル"></div>
     <div class="activity-copy">
@@ -128,6 +129,13 @@
           <button id="speech-send-phrase-reset" type="button">この言語の初期値に戻す</button>
         </div>
         <p class="settings-note">合図は聞き取り言語に合わせて切り替わります。編集した合図も言語ごとに保存されます。空欄で無効になります。</p>
+        <h3>置換ルール</h3>
+        <div class="replacement-head" aria-hidden="true"><span>発話</span><span></span><span>置換後</span><span></span></div>
+        <div id="replacement-rows"></div>
+        <div class="field-row">
+          <button id="replacement-add" type="button">＋ ルールを追加</button>
+        </div>
+        <p class="settings-note">認識が確定したあとに、発話に含まれるこの語を置換します。音声では言えない /daily のようなコマンドや、決まった文章を登録できます。長い語から先に一致し、残りの発話はそのまま続きます (「日記書いて 今日は雨」→「/daily 今日は雨」)。置換後を空にすると、その語を削除します。</p>
         <p id="speech-language-note" class="settings-note"></p>
         <p class="settings-note">単語や複数語のフレーズを登録できます。認識確定時に発話末尾が一致すると動作します。初期値は日本語・英語のみです。</p>
         <p class="settings-note">API Key は config.toml に平文で保存されます (ファイルは 0600 で書き込まれます)。</p>

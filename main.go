@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/takeshy/speech-popup/internal/config"
 	"github.com/takeshy/speech-popup/internal/ipc"
@@ -65,7 +66,13 @@ func main() {
 			printStatus()
 			return
 		}
-		if err := ipc.RunClientCommand(command); err != nil {
+		opts, err := parseCommandOptions(os.Args[2:])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "speech-popup:", err)
+			usage()
+			os.Exit(1)
+		}
+		if err := ipc.RunClientCommand(command, opts); err != nil {
 			fmt.Fprintln(os.Stderr, "speech-popup:", err)
 			os.Exit(1)
 		}
@@ -159,6 +166,29 @@ func runDaemon() {
 	}
 }
 
+// parseCommandOptions reads the flags that follow a command. Only --append is
+// accepted today; anything else is refused rather than ignored, so a typo does
+// not silently open a popup that behaves differently from what was asked.
+func parseCommandOptions(args []string) (ipc.Options, error) {
+	var opts ipc.Options
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case strings.HasPrefix(arg, "--append="):
+			opts.Append = strings.TrimPrefix(arg, "--append=")
+		case arg == "--append":
+			if i+1 >= len(args) {
+				return ipc.Options{}, fmt.Errorf("--append needs the text to append")
+			}
+			i++
+			opts.Append = args[i]
+		default:
+			return ipc.Options{}, fmt.Errorf("unknown option %q", arg)
+		}
+	}
+	return opts, opts.Validate()
+}
+
 func usage() {
 	fmt.Println(`speech-popup - Speech input popup window
 
@@ -169,5 +199,10 @@ Usage:
   speech-popup hide       hide the popup window
   speech-popup quit       stop the daemon
   speech-popup status     report whether a daemon is running, and where its files are
-  speech-popup version    print the version`)
+  speech-popup version    print the version
+
+Options:
+  --append <text>         append <text> when this popup copies, even if nothing
+                          was dictated, so the caller can recognise its own paste
+                          (speech-popup show --append "send it")`)
 }

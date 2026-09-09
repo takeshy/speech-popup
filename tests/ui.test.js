@@ -6,6 +6,7 @@ import { createRecorder, speechSupported } from "../frontend/src/recorder.js";
 import { createTextEditor } from "../frontend/src/editor.js";
 import { createAutoSizer } from "../frontend/src/autosize.js";
 import { defaultSpeechCommands, speechCommandsFor, splitCommandPhrases } from "../frontend/src/speech_commands.js";
+import { parseReplacementRules, serializeReplacementRules } from "../frontend/src/replacements.js";
 import { defaultSendPhrase, initialSendPhrase, sendPhraseLanguage } from "../frontend/src/send_phrases.js";
 import { speechLanguageOptions } from "../frontend/src/speech_languages.js";
 import { t as translate, setLanguage, getLanguage } from "../frontend/src/i18n.js";
@@ -17,12 +18,12 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "../fro
 const source = readFileSync(new URL("../frontend/src/main.js", import.meta.url), "utf8")
   .replace(/^import .*;$/gm, "");
 
-async function until(predicate) {
+async function until(predicate, detail = "") {
   for (let i = 0; i < 100; i++) {
     if (predicate()) return;
     await new Promise((resolve) => setImmediate(resolve));
   }
-  assert.fail("UI did not reach the expected state");
+  assert.fail(`UI did not reach the expected state${detail ? `: ${detail}` : ""}`);
 }
 
 async function setup(t, { history = [], copyFails = false, vertexClient = null, speech = {}, respond = null, recordingStep = 3000 } = {}) {
@@ -62,22 +63,70 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
   }
 
   const elements = new Map();
+  // Rows the settings pane builds at runtime are reachable by id like every
+  // other element, so a test asserts on the fields the user actually fills in.
+  function createElement() {
+    const handlers = {};
+    const node = {
+      value: "", textContent: "", hidden: false, dataset: {}, checked: false, className: "", children: [],
+      parent: null, focused: false, focus() { node.focused = true; }, setAttribute() {},
+      append(...children) {
+        for (const child of children) {
+          child.parent = node;
+          node.children.push(child);
+        }
+      },
+      replaceChildren(...children) {
+        for (const child of node.children) child.parent = null;
+        node.children = [];
+        node.append(...children);
+      },
+      remove() {
+        if (!node.parent) return;
+        node.parent.children = node.parent.children.filter((child) => child !== node);
+        node.parent = null;
+      },
+      addEventListener(name, callback) { handlers[name] = callback; },
+      fire(name, event = {}) { handlers[name]?.({ preventDefault() {}, ...event }); }
+    };
+    let id = "";
+    Object.defineProperty(node, "id", {
+      get() { return id; },
+      set(value) {
+        id = value;
+        elements.set(value, node);
+      }
+    });
+    return node;
+  }
   function element(id) {
     if (!elements.has(id)) {
-      const handlers = {};
-      elements.set(id, {
-        value: "", textContent: "", hidden: false, dataset: {}, checked: false,
-        selectionStart: 0, selectionEnd: 0,
-        focus() {}, setAttribute() {},
-        options: [], replaceChildren(...options) { this.options = options; this.value = options[0]?.value ?? ""; },
-        setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; },
-        setRangeText(text, start, end) {
-          this.value = this.value.slice(0, start) + text + this.value.slice(end);
-          this.setSelectionRange(start + text.length, start + text.length);
-        },
-        addEventListener(name, callback) { handlers[name] = callback; },
-        fire(name, event = {}) { if (id === "record" && name === "click") recordingTime += recordingStep; handlers[name]?.({ preventDefault() {}, ...event }); }
-      });
+      // Static elements are the same stand-ins as the ones built at runtime,
+      // plus what a select and a text field need.
+      const node = createElement();
+      node.selectionStart = 0;
+      node.selectionEnd = 0;
+      node.options = [];
+      const replaceChildren = node.replaceChildren;
+      node.replaceChildren = (...children) => {
+        node.options = children;
+        node.value = children[0]?.value ?? "";
+        replaceChildren(...children);
+      };
+      node.setSelectionRange = (start, end) => {
+        node.selectionStart = start;
+        node.selectionEnd = end;
+      };
+      node.setRangeText = (text, start, end) => {
+        node.value = node.value.slice(0, start) + text + node.value.slice(end);
+        node.setSelectionRange(start + text.length, start + text.length);
+      };
+      const fire = node.fire;
+      node.fire = (name, event = {}) => {
+        if (id === "record" && name === "click") recordingTime += recordingStep;
+        fire(name, event);
+      };
+      node.id = id;
     }
     const node = elements.get(id);
     if (id === "cfg-speech-language" && !node.selectValueInstalled) {
@@ -118,6 +167,10 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
     GetVertexOAuthStatus: async () => ({ connected: vertexConnections.length > 0, clientId: vertexClient?.clientId }),
     ReadClipboard: async () => "",
     CopyToClipboard: async () => { if (copyFails) throw new Error("copy failed"); },
+    CopyTranscript: async (text) => {
+      if (copyFails) throw new Error("copy failed");
+      return text !== "";
+    },
     HidePopup: async () => { hides++; events["popup:hidden"](); },
     SpeechHTTPRequest: async (request) => {
       requests.push(request);
@@ -129,12 +182,12 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
   };
   const timers = new Set();
   const context = vm.createContext({
-    document: { getElementById: element, addEventListener() {} },
+    document: { getElementById: element, createElement, addEventListener() {} },
     window: { go: { main: { App: app } }, runtime: {
       EventsOn(name, callback) { events[name] = callback; }
     } },
     createRecorder: options => createRecorder({ ...options, now: () => recordingTime }), createTextEditor, createAutoSizer, speechSupported, endpointPreset, isGoogleEndpoint, validateSpeechSettings,
-    t: translate, getLanguage, setLanguage, speechLanguageOptions, defaultSendPhrase, initialSendPhrase, sendPhraseLanguage, defaultSpeechCommands, speechCommandsFor, splitCommandPhrases,
+    t: translate, getLanguage, setLanguage, speechLanguageOptions, defaultSendPhrase, initialSendPhrase, sendPhraseLanguage, defaultSpeechCommands, speechCommandsFor, splitCommandPhrases, parseReplacementRules, serializeReplacementRules,
     Option: class { constructor(text, value) { this.textContent = text; this.value = value; } },
     localizeDOM() {},
     createAudioMeter: () => ({ attach: async () => true }),
@@ -419,7 +472,9 @@ test("send phrases follow language changes, remember edits and disabling, and re
   const phrase = ui.element("cfg-speech-send-phrase");
   const language = ui.element("cfg-speech-language");
   const choose = (code) => { language.value = code; language.fire("change"); };
-  assert.equal(phrase.value, "over");
+  assert.equal(phrase.value, "I'm done speaking");
+  assert.equal(ui.element("send-phrase-hint").textContent, "終了するには「I'm done speaking」と話してください");
+  assert.equal(ui.element("send-phrase-hint").hidden, false);
   choose("fr");
   assert.equal(phrase.value, "");
   phrase.value = "envoyer maintenant";
@@ -481,6 +536,18 @@ test("recorded speech replaces selected text and keeps the remaining text", asyn
   await until(() => ui.element("mode").dataset.recording === "true");
   ui.element("record").fire("click");
   await until(() => input.value === "left recognized right");
+});
+
+test("a send phrase with no preceding text closes without copying", async (t) => {
+  const ui = await setup(t, {
+    speech: { apiKey: "corrected", language: "ja", sendPhrase: "これで終わります" },
+    respond: () => ({ status: 200, body: '{"text":"これで終わります"}' })
+  });
+  ui.element("record").fire("click");
+  await until(() => ui.element("mode").dataset.recording === "true");
+  ui.element("record").fire("click");
+  await until(() => ui.hides() === 1);
+  assert.equal(ui.element("input").value, "");
 });
 
 test("question and newline phrases follow language, preserve overrides, and survive save", async (t) => {
@@ -547,6 +614,57 @@ test("saved symbol phrases actually control recorded transcription", async (t) =
 });
 
 
+test("a saved replacement rule turns dictation into the command it stands for", async (t) => {
+  const ui = await setup(t, {
+    // "/daily" cannot be dictated: this is the whole point of the rules.
+    speech: { apiKey: "corrected", replacements: "日記書いて => /daily" },
+    respond: () => ({ status: 200, body: '{"text":"日記書いて 今日は雨だった"}' })
+  });
+  const record = async (expected) => {
+    ui.element("record").fire("click");
+    await until(() => ui.element("mode").dataset.recording === "true");
+    ui.element("record").fire("click");
+    await until(() => ui.element("input").value.endsWith(expected), `input was ${JSON.stringify(ui.element("input").value)}, requests ${ui.requests.length}, saved ${JSON.stringify(ui.config().speech.replacements)}, status ${JSON.stringify(ui.element("status").textContent)}`);
+  };
+  await record("/daily 今日は雨だった");
+
+  // Settings shows the saved rule in its two fields, one row per rule, with an
+  // empty row waiting so the first rule needs no extra click.
+  // openSettings reloads the config, fills the form and only then focuses its
+  // first field, so that focus is the signal that the rows are the saved ones.
+  const openSettings = async () => {
+    ui.element("cfg-speech-provider").focused = false;
+    ui.element("menu-settings").fire("click");
+    await until(() => ui.element("cfg-speech-provider").focused);
+  };
+  await openSettings();
+  assert.equal(ui.element("cfg-replacement-from-1").value, "日記書いて");
+  assert.equal(ui.element("cfg-replacement-to-1").value, "/daily");
+  // An empty row waits at the end, so a rule can be added without the button.
+  assert.equal(ui.element("cfg-replacement-from-2").value, "");
+
+  // A replacement is often a sentence, and it may span lines.
+  ui.element("cfg-replacement-from-2").value = "今日は雨だった";
+  ui.element("cfg-replacement-to-2").value = "今日は雨でした。\n傘を持って出ました。";
+  ui.element("replacement-add").fire("click");
+  assert.equal(ui.element("cfg-replacement-from-3").className, "replacement-from");
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").textContent === "保存しました。");
+  // The row left empty is not stored as a rule.
+  assert.equal(ui.config().speech.replacements, "日記書いて => /daily\n今日は雨だった => 今日は雨でした。\\n傘を持って出ました。");
+  ui.element("settings-close").fire("click");
+  await record("/daily 今日は雨でした。\n傘を持って出ました。");
+
+  // Deleting a rule leaves the other one working.
+  await openSettings();
+  ui.element("replacement-remove-1").fire("click");
+  ui.element("settings-form").fire("submit");
+  await until(() => ui.element("settings-status").textContent === "保存しました。");
+  ui.element("settings-close").fire("click");
+  await record("日記書いて 今日は雨でした。\n傘を持って出ました。");
+});
+
+
 test("MAI transcription still uses its saved endpoint, key, model and language after another service", async (t) => {
   const ui = await setup(t, {
     speech: { endpointType: "azure-mai-transcribe", baseUrl: "https://mai.example.com", apiKey: "mai-key",
@@ -601,7 +719,7 @@ test("saving Settings closes it, while validation errors leave it open", async (
   await until(() => ui.element("settings-overlay").dataset.open === "false");
 });
 
-test("manual recordings stopped within two seconds are not sent", async (t) => {
+test("manual recordings are sent even when stopped within two seconds", async (t) => {
   for (const duration of [100, 1999, 2000, 2001]) {
     await t.test(String(duration), async t => {
       const ui = await setup(t, { recordingStep: duration, speech: { apiKey: "corrected" } });
@@ -609,7 +727,7 @@ test("manual recordings stopped within two seconds are not sent", async (t) => {
       await until(() => ui.element("mode").dataset.recording === "true");
       ui.element("record").fire("click");
       await new Promise(resolve => setTimeout(resolve, 10));
-      assert.equal(ui.requests.length, duration <= 2000 ? 0 : 1);
+      assert.equal(ui.requests.length, 1);
       assert.equal(ui.element("mode").dataset.recording, "false");
     });
   }

@@ -29,7 +29,7 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
   let active = null;
   // Complete, independently decodable chunks, kept in order until accepted.
   let retained = [];
-  const state = { status: "idle", error: "", silenceHint: "", retainedCount: 0, meterStream: null };
+  const state = { status: "idle", error: "", silenceHint: "", retainedCount: 0, meterStream: null, backgroundTranscribing: false };
   const retainedDuration = () => retained.reduce((sum, chunk) => sum + chunk.durationMs, 0);
 
   function publish(changes) {
@@ -50,47 +50,41 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
       }
       current.stream?.getTracks().forEach(track => track.stop());
     }
-    if (current?.startedAt !== undefined && now() - current.startedAt <= 2000) {
-      retained = retained.filter(chunk => chunk.sessionId !== current.id);
-    }
     if (!preserve) retained = [];
-    publish({ status: "idle", meterStream: null, silenceHint: "", retainedCount: retained.length });
+    publish({ status: "idle", meterStream: null, silenceHint: "", retainedCount: retained.length, backgroundTranscribing: false });
   }
 
   async function drain(current) {
     if (current.processing || active !== current) return;
     current.processing = true;
     try {
-      // A short automatic segment must not escape before the user has had
-      // two seconds to cancel an accidentally started recording.
-      const delay = 2001 - (now() - current.startedAt);
-      if (delay > 0) {
-        await new Promise((resolve, reject) => {
-          const signal = current.controller.signal;
-          const abort = () => { clearTimeout(timer); reject(signal.reason); };
-          const timer = setTimeout(() => {
-            signal.removeEventListener("abort", abort);
-            resolve();
-          }, delay);
-          signal.addEventListener("abort", abort, { once: true });
-          if (signal.aborted) abort();
-        });
-      }
       while (retained.length && active === current) {
         const chunk = retained[0];
         if (current.ending) publish({ status: "preparing", meterStream: null });
+        else publish({ backgroundTranscribing: true });
         const wav = await recordingsToWav([chunk.clip], current.controller.signal);
         current.controller.signal.throwIfAborted();
         if (current.ending) publish({ status: "transcribing" });
         const transcript = await transcribeSpeech(wav, current.settings, transport, current.controller.signal);
         if (active !== current) return;
-        if (!transcript) throw new Error(t("音声を認識できませんでした。もう一度お試しください。"));
-        const draft = speechDraft(getBase(), transcript, true, current.settings.sendPhrase, chunk.afterSilence, false, current.settings.symbolCommands);
+        if (!transcript) {
+          // An automatic silence boundary can be armed by background sound.
+          // An empty result confirms that the chunk contained nothing useful:
+          // consume it quietly and keep the microphone/session alive. A manual
+          // stop still reports the empty result so the user gets feedback.
+          if (chunk.afterSilence) {
+            retained.shift();
+            publish({ retainedCount: retained.length });
+            continue;
+          }
+          throw new Error(t("音声を認識できませんでした。もう一度お試しください。"));
+        }
+        const draft = speechDraft(getBase(), transcript, true, current.settings.sendPhrase, chunk.afterSilence, false, current.settings.symbolCommands, current.settings.replacements);
         retained.shift();
         publish({ retainedCount: retained.length });
         onInput(draft.text);
         const text = getText?.() ?? draft.text;
-        if (draft.send && text.trim()) {
+        if (draft.send) {
           stop(false);
           onSend(text);
           return;
@@ -106,16 +100,13 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
       }
     } finally {
       current.processing = false;
+      if (active === current && !current.ending) publish({ backgroundTranscribing: false });
       if (active === current && current.ending && !current.pendingCaptures && !retained.length) stop(false);
     }
   }
 
   function finishRecording(current, afterSilence = false) {
     if (active !== current || current.recorder?.state !== "recording") return;
-    if (!afterSilence && now() - current.startedAt <= 2000) {
-      stop();
-      return;
-    }
     const recorder = current.recorder;
     recorder.afterSilence = afterSilence;
     current.stopSilence?.();
@@ -190,7 +181,7 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
           publish({ silenceHint: available
             ? t("無音 {0} 秒で区切って変換します (録音は継続)", current.settings.silenceSeconds)
             : t("無音の検出は利用できません") });
-        }, () => { heardVoice = true; });
+        }, () => { heardVoice = true; }, followsSilence ? 0 : 3000);
     }
   }
 
@@ -216,10 +207,6 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
       return;
     }
     publish({ error: "" });
-    if (retainedDuration() >= MAX_RECORDING_MS - 1000) {
-      publish({ error: t("保持している録音が5分に達しました。認識するか破棄してください。") });
-      return;
-    }
     if (!speechSupported()) {
       publish({ error: t("このウィンドウでは録音を利用できません。") });
       return;
@@ -234,11 +221,17 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
         stream.getTracks().forEach(track => track.stop());
         return;
       }
+      // Retry deliberately reuses retained audio. Starting Record is the
+      // opposite choice: abandon a clip that may itself be why transcription
+      // keeps failing, just as closing and reopening the popup already does.
+      // Wait until microphone acquisition succeeds so a permission/device
+      // failure does not destroy the only retryable recording.
+      retained = [];
       current.stream = stream;
       current.mimeType = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg;codecs=opus"]
         .find(type => MediaRecorder.isTypeSupported(type));
       startChunk(current);
-      publish({ status: "recording", meterStream: stream });
+      publish({ status: "recording", meterStream: stream, retainedCount: 0 });
       current.timer = setTimeout(() => finishRecording(current), Math.max(1000, MAX_RECORDING_MS - retainedDuration()));
     } catch (caught) {
       if (active === current) {

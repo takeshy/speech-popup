@@ -55,13 +55,17 @@ type SpeechConfig struct {
 	// openai / custom (POST /audio/transcriptions), whisper-cpp
 	// (POST /inference), gemini-transcribe and vertex-transcribe
 	// (generateContent with inline audio).
-	EndpointType    string
-	BaseURL         string
-	APIKey          string
-	Model           string
-	Language        string // BCP-47 tag, or "auto"
-	SilenceSeconds  int    // 0 disables silence segmentation
-	SendPhrase      string // spoken words that copy & close, comma separated
+	EndpointType   string
+	BaseURL        string
+	APIKey         string
+	Model          string
+	Language       string // BCP-47 tag, or "auto"
+	SilenceSeconds int    // 0 disables silence segmentation
+	SendPhrase     string // spoken words that copy & close, comma separated
+	// Replacements rewrites recognized text, one rule per line as
+	// "spoken phrase => text". It exists for text dictation cannot produce,
+	// such as a slash command.
+	Replacements    string
 	VertexProjectID string
 	// AutoStart begins recording as soon as the popup is shown.
 	AutoStart bool
@@ -360,6 +364,8 @@ func (c *Config) apply(section, key, value string) {
 			c.Speech.SilenceSeconds = atoiOr(value, c.Speech.SilenceSeconds)
 		case "send_phrase":
 			c.Speech.SendPhrase = value
+		case "replacements":
+			c.Speech.Replacements = value
 		case "vertex_project_id":
 			c.Speech.VertexProjectID = value
 		case "auto_start":
@@ -421,6 +427,8 @@ func Marshal(c *Config) string {
 	fmt.Fprintf(&b, "silence_seconds = %d\n", c.Speech.SilenceSeconds)
 	b.WriteString("# 認識結果の末尾がこの語なら、その語を除いてコピーして閉じる (カンマ区切り)\n")
 	fmt.Fprintf(&b, "send_phrase = %s\n", quote(c.Speech.SendPhrase))
+	b.WriteString("# 認識結果を書き換える。1行1件で \"発話 => 置換後\" (音声では言えない /daily などのため)\n")
+	fmt.Fprintf(&b, "replacements = %s\n", quote(c.Speech.Replacements))
 	b.WriteString("# vertex-transcribe で使う Google Cloud プロジェクト ID\n")
 	fmt.Fprintf(&b, "vertex_project_id = %s\n", quote(c.Speech.VertexProjectID))
 	b.WriteString("# ポップアップを開いた直後に録音を開始する\n")

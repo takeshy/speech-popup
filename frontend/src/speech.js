@@ -1,3 +1,4 @@
+import { applyReplacementRules } from "./replacements.js";
 import { trailingCommand } from "./speech_commands.js";
 import { t } from "./i18n.js";
 // Speech-to-text core, ported from gemihub-desktop's src/llm/speechTranscription.ts.
@@ -79,7 +80,7 @@ export function transcriptionURL(baseUrl, endpointType = "openai", vertexProject
 
 // speechDraft appends the transcript to whatever is already in the box and
 // reports whether the user spoke a send phrase ("over"), which copies & closes.
-export function speechDraft(base, transcript, final, sendPhrase = "over, オーバー", _afterSilence = false, normalized = false, symbolCommands) {
+export function speechDraft(base, transcript, final, sendPhrase = "over, オーバー", _afterSilence = false, normalized = false, symbolCommands, replacements) {
   const phrases = sendPhrase.split(/[,、\n]/).map((phrase) => phrase.trim())
     .filter(Boolean).sort((a, b) => b.length - a.length);
   const pattern = phrases.map((phrase) => {
@@ -94,6 +95,10 @@ export function speechDraft(base, transcript, final, sendPhrase = "over, オー�
   const send = final && !!command && command.test(transcript);
   let spoken = send && command ? transcript.replace(command, "").trimEnd() : transcript;
   if (final && !normalized) spoken = convertSpokenSymbol(spoken, !send, symbolCommands);
+  // After the symbols, so a rule may produce text the symbol commands would
+  // otherwise have eaten, and only once the text is final: a partial transcript
+  // would replace half a phrase and never see the rest of it.
+  if (final && !normalized) spoken = applyReplacementRules(spoken, replacements);
   if (final) {
     spoken = spoken.replace(/[。．.۔।॥։]+[ \t　]*(?=[!?！？؟])/g, "");
     // A separately dictated mark replaces the full stop immediately before

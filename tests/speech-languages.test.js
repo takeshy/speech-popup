@@ -30,6 +30,8 @@ test("phrase language aliases, automatic language, and legacy edits are retained
   assert.equal(sendPhraseLanguage("cmn-Hans-CN"), "zh");
   assert.equal(defaultSendPhrase("zh-TW"), "");
   assert.equal(defaultSendPhrase("fr-CA"), "");
+  assert.equal(defaultSendPhrase("ja"), "これで終わります");
+  assert.equal(defaultSendPhrase("en"), "I'm done speaking");
   assert.equal(initialSendPhrase({ language: "de", sendPhrase: "over, オーバー" }), "");
   assert.equal(initialSendPhrase({ language: "de", sendPhrase: "my command" }), "my command");
   assert.equal(initialSendPhrase({ language: "de", sendPhrase: "" }), "");

@@ -1,3 +1,4 @@
+import { applyReplacementRules } from "./replacements.js";
 import { t } from "./i18n.js";
 // Live dictation through the WebView's own SpeechRecognition, ported from
 // gemihub-desktop's src/llm/useChatSpeech.ts.
@@ -83,8 +84,8 @@ export function createBrowserRecognizer({ getSettings, getBase, getContext, getT
           const text = result[0].transcript;
           if (!result.isFinal) return text;
           // Send phrases take precedence even when they end with a symbol alias.
-          if (speechDraft("", text, true, settings.sendPhrase, false, false, settings.symbolCommands).send) return text;
-          return convertSpokenSymbol(text, true, settings.symbolCommands);
+          if (speechDraft("", text, true, settings.sendPhrase, false, false, settings.symbolCommands, settings.replacements).send) return text;
+          return applyReplacementRules(convertSpokenSymbol(text, true, settings.symbolCommands), settings.replacements);
         }).join("");
         // Only a final trailing command sends; interim hypotheses may change.
         const draft = speechDraft(
@@ -103,7 +104,7 @@ export function createBrowserRecognizer({ getSettings, getBase, getContext, getT
         if (draft.send) {
           stop();
           const text = getText?.() ?? draft.text;
-          if (text.trim()) onSend(text);
+          onSend(text);
         }
       };
       current.onresult = (event) => {

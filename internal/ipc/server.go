@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// Handler processes a single IPC command. quit is handled by the server
-// itself and never reaches the handler.
-type Handler func(command string) error
+// Handler processes a single IPC command and its options. quit is handled by
+// the server itself and never reaches the handler.
+type Handler func(command string, opts Options) error
 
 // Server listens on the platform's local IPC transport and dispatches commands.
 type Server struct {
@@ -74,9 +74,14 @@ func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 
-	command, err := readLine(conn)
-	if err != nil || !IsValidCommand(command) {
-		writeResponse(conn, fmt.Sprintf("error: invalid command %q", command))
+	line, err := readLine(conn)
+	if err != nil {
+		writeResponse(conn, fmt.Sprintf("error: invalid command %q", line))
+		return
+	}
+	command, opts, err := DecodeCommand(line)
+	if err != nil {
+		writeResponse(conn, "error: "+err.Error())
 		return
 	}
 	if command == "quit" {
@@ -91,7 +96,7 @@ func (s *Server) handleConn(conn net.Conn) {
 		writeResponse(conn, "error: speech-popup is still starting")
 		return
 	}
-	if err := s.handler(command); err != nil {
+	if err := s.handler(command, opts); err != nil {
 		writeResponse(conn, "error: "+err.Error())
 		return
 	}
