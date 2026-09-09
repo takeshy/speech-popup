@@ -3,8 +3,9 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap desktop rescap">
+  IgnorableNamespaces="uap uap3 desktop rescap">
   <Identity
     Name="@PACKAGE_NAME@"
     Publisher="@PUBLISHER@"
@@ -35,6 +36,18 @@
       </uap:VisualElements>
       <Extensions>
         <desktop:Extension Category="windows.fullTrustProcess" Executable="speech-popup.exe" />
+        <!--
+          Without an alias a Store install has no command anywhere on PATH, so
+          `speech-popup show` from a hotkey, a script or another application is
+          impossible: the packaged EXE under WindowsApps cannot be launched by
+          path. The alias is what makes the documented CLI work when the app was
+          installed from the Store rather than as a standalone EXE.
+        -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="speech-popup.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="speech-popup.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
         <desktop:Extension Category="windows.startupTask" Executable="speech-popup.exe" EntryPoint="Windows.FullTrustApplication">
           <desktop:StartupTask TaskId="SpeechPopupStartup" Enabled="true" DisplayName="speech-popup" />
         </desktop:Extension>

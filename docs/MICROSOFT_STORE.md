@@ -27,7 +27,7 @@ wails3 task windows:msix ARCH=arm64
 
 Outputs are `bin/speech-popup-windows-amd64.msix` and `bin/speech-popup-windows-arm64.msix`. The EXE is rebuilt for each architecture and includes the app icon/version resources. The `Windows packages` GitHub Actions workflow builds EXEs for both architectures when manually dispatched. It also builds MSIX packages when both identity variables are set; otherwise it emits a notice and skips only MSIX packaging. Invalid configured identities still fail packaging.
 
-The MSIX contains the full-trust desktop EXE, microphone/network declarations, startup task and app/Store/tile logos. The UI ships English and Japanese resources inside the frontend. Supported package languages are en-US and ja-JP.
+The MSIX contains the full-trust desktop EXE, microphone/network declarations, startup task, the `speech-popup.exe` app execution alias and app/Store/tile logos. The UI ships English and Japanese resources inside the frontend. Supported package languages are en-US and ja-JP.
 
 Microsoft signs the package distributed through the Store. For local installation tests, sign a copy with a trusted test certificate whose subject matches the package Publisher; do not change the Store identity to match an unrelated certificate. [Package requirements](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/app-package-requirements).
 
@@ -41,6 +41,7 @@ Microsoft signs the package distributed through the Store. For local installatio
 - Browser recognition may be unavailable in WebView2. The UI must direct the user to a supported recorded service.
 - Test whisper.cpp locally or use your own supported API account; confirm transcription, retry, editing keys and paste into another application.
 - Confirm external clipboard history persists, settings apply, and uninstall/reinstall behavior is understood.
+- Run `speech-popup status` and `speech-popup show` in PowerShell: the app execution alias must drive the installed package, so hotkeys and other applications can reach it.
 
 The Linux development environment cannot validate installation, Windows SDK packaging or Store certification. A successful cross-compile is not a replacement for these checks.
 

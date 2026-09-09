@@ -222,6 +222,8 @@ If Ctrl+8 does not work, try `speech-popup show` and inspect `speech-popup.log`.
 
 The Windows GUI EXE attaches to its parent console for CLI output. PowerShell may display the output after returning its prompt.
 
+Store installations register `speech-popup.exe` as an app execution alias, so the same commands work from PowerShell, a shortcut or another application without knowing the package path. Windows adds the alias when the package is installed or updated; the plain `speech-popup` name (no extension) also resolves because PATHEXT includes `.exe`.
+
 ## Build and test
 
 Go 1.25+ and Node.js 22+ are required. Linux builds also need GTK3 and WebKit2GTK 4.1 development packages.

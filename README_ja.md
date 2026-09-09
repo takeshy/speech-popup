@@ -135,6 +135,8 @@ type "$env:AppData\speech-popup\speech-popup.log"   # 理由が残っている
 
 Windows 版は `-H windowsgui` でビルドしているため OS はコンソールを与えません。CLI サブコマンドの出力が消えないよう、起動時に `AttachConsole(ATTACH_PARENT_PROCESS)` で呼び出し元のコンソールへ繋ぎ直しています (`console_windows.go`)。PowerShell は GUI サブシステムの exe を待たないので、**プロンプトが戻ったあとに出力が表示される**ことがあります。
 
+Microsoft Store 版はパッケージ内の EXE をパス指定で起動できませんが、`speech-popup.exe` をアプリ実行エイリアスとして登録しているため、上記のコマンドは PowerShell・ショートカット・他アプリからそのまま使えます。エイリアスはインストール/更新時に Windows が作成します (拡張子なしの `speech-popup` でも PATHEXT により解決されます)。
+
 ログには `hotkey: registered Ctrl+8` か、失敗理由 (`...1409` = 既に登録済み) が出ます。登録に失敗している場合は窓の下部にも赤字で表示され、**⋮ → 設定 → 情報**の「ホットキー」欄で現在の状態を確認できます。別のキー (`Ctrl+Alt+S` など) に変えて保存すれば、その場で再登録されます。
 
 ### macOS
