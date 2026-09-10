@@ -212,17 +212,20 @@ export async function recordingsToWav(clips, signal) {
 // opened, and returns the endpoint URL the request will use.
 export function validateSpeechSettings(settings) {
   if (settings.provider === "live") {
-    if (!["openai", "gemini-transcribe"].includes(settings.endpointType)) {
-      throw new Error(t("ライブ書き起こしは OpenAI または Gemini API を指定してください。"));
+    if (!["openai", "gemini-transcribe", "vertex-transcribe"].includes(settings.endpointType)) {
+      throw new Error(t("ライブ書き起こしは OpenAI / Gemini API / Vertex AI のいずれかを指定してください。"));
     }
-    if (!settings.apiKey.trim()) throw new Error(t("ライブ書き起こしの API Key を設定してください。"));
+    if (settings.endpointType !== "vertex-transcribe" && !settings.apiKey.trim()) throw new Error(t("ライブ書き起こしの API Key を設定してください。"));
+    if (settings.endpointType === "vertex-transcribe" && !/^[a-z0-9][a-z0-9_-]*$/i.test(settings.vertexProjectId.trim())) {
+      throw new Error(t("Vertex AI の OAuth クライアント JSON を選択して Google に接続し、設定を保存してください。"));
+    }
     const language = settings.language.trim();
     if (language && language.toLowerCase() !== "auto" && !/^[a-z]{2,3}(?:-[a-z0-9]+)*$/i.test(language)) {
       throw new Error(t("言語は auto か BCP-47 (ja / en-US など) で指定してください。"));
     }
-    return settings.endpointType === "openai"
-      ? "wss://api.openai.com/v1/realtime?intent=transcription"
-      : "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+    if (settings.endpointType === "openai") return "wss://api.openai.com/v1/realtime?intent=transcription";
+    if (settings.endpointType === "vertex-transcribe") return "wss://aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmBidiService/BidiGenerateContent";
+    return "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
   }
   const url = transcriptionURL(settings.baseUrl, settings.endpointType, settings.vertexProjectId ?? "");
   if (settings.endpointType === "azure-mai-transcribe" && !settings.apiKey.trim()) {
@@ -258,7 +261,6 @@ function bytesToBase64(bytes) {
 
 function geminiTranscript(result) {
   const invalid = (field) => new Error(`${t("STT の応答を解釈できません。")} (Gemini: ${field})`);
-  const empty = () => new Error(t("Gemini から認識テキストが返されませんでした。録音は保持されています。Ctrl+R で再試行できます。"));
   if (!result || typeof result !== "object" || Array.isArray(result) || "error" in result) throw invalid("response");
   if (result.promptFeedback && typeof result.promptFeedback === "object" && "blockReason" in result.promptFeedback) {
     throw new Error(t("音声がモデルにブロックされました。"));
@@ -271,7 +273,7 @@ function geminiTranscript(result) {
     throw new Error(t("認識結果が途中で打ち切られました。もう一度お試しください。"));
   }
   const parts = candidate.content?.parts;
-  if (parts === undefined && candidate.finishReason === "STOP") throw empty();
+  if (parts === undefined && candidate.finishReason === "STOP") return "";
   if (!Array.isArray(parts)) throw invalid("parts");
   const text = parts.map((part) => {
     if (!part || typeof part !== "object" || Array.isArray(part)) throw invalid("part");
@@ -288,7 +290,6 @@ function geminiTranscript(result) {
     if (typeof part.text !== "string") throw invalid("part.text");
     return part.text;
   }).join("").trim();
-  if (!text) throw empty();
   return text;
 }
 

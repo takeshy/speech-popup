@@ -472,8 +472,8 @@ test("send phrases follow language changes, remember edits and disabling, and re
   const phrase = ui.element("cfg-speech-send-phrase");
   const language = ui.element("cfg-speech-language");
   const choose = (code) => { language.value = code; language.fire("change"); };
-  assert.equal(phrase.value, "I'm done speaking");
-  assert.equal(ui.element("send-phrase-hint").textContent, "終了するには「I'm done speaking」と話してください");
+  assert.equal(phrase.value, "over");
+  assert.equal(ui.element("send-phrase-hint").textContent, "終了するには「over」と話してください");
   assert.equal(ui.element("send-phrase-hint").hidden, false);
   choose("fr");
   assert.equal(phrase.value, "");

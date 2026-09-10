@@ -28,12 +28,19 @@ export function createLiveRecognizer({ getSettings, getBase, getContext, getText
     ending = finish ? current : null;
     clearTimeout(current.finishTimer);
     current.stream?.getTracks().forEach(track => track.stop());
-    const closed = finish ? null : connection(() => liveTransport.stop()).catch(() => {});
     if (!finish) publish({ status: "idle", meterStream: null });
     try { await current.capture?.stop(); } catch {}
+    // Audio has already streamed to the provider, but an entirely quiet input
+    // needs neither finalization nor its timeout wait.
+    if (finish && current.capture?.heardVoice?.() === false) {
+      ending = null;
+      await connection(() => liveTransport.stop()).catch(() => {});
+      publish({ status: "idle", meterStream: null });
+      return;
+    }
     try {
       if (finish && ending === current) await liveTransport.finish(current.id);
-      else if (closed) await closed;
+      else if (!finish) await connection(() => liveTransport.stop()).catch(() => {});
     } catch (caught) {
       if (finish) publish({ error: t("ライブ書き起こしの終了に失敗しました: {0}", errorMessage(caught)) });
     }

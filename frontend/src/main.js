@@ -605,6 +605,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     renderSpeechLanguages(view.speech.language || "auto");
     cfgFields.speechSilence.value = String(view.speech.silenceSeconds);
     sendPhraseProfiles = structuredClone(view.speech.sendPhraseProfiles ?? {});
+    if (sendPhraseProfiles.en === "I'm done speaking") sendPhraseProfiles.en = defaultSendPhrase("en");
     exclamationPhrases = structuredClone(view.speech.exclamationPhrases ?? {});
     questionPhrases = structuredClone(view.speech.questionPhrases ?? {});
     newlinePhrases = structuredClone(view.speech.newlinePhrases ?? {});
@@ -792,9 +793,9 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     const browser = cfgFields.speechProvider.value === "browser";
     const live = cfgFields.speechProvider.value === "live";
     for (const option of cfgFields.speechEndpoint.options) {
-      option.disabled = live && !["openai", "gemini-transcribe"].includes(option.value);
+      option.disabled = live && !["openai", "gemini-transcribe", "vertex-transcribe"].includes(option.value);
     }
-    if (live && !["openai", "gemini-transcribe"].includes(cfgFields.speechEndpoint.value)) {
+    if (live && !["openai", "gemini-transcribe", "vertex-transcribe"].includes(cfgFields.speechEndpoint.value)) {
       cfgFields.speechEndpoint.value = "openai";
       applyEndpointPreset();
       return;
@@ -809,7 +810,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     rows.baseUrl.hidden = browser || google || live;
     rows.apiKey.hidden = browser || endpointType === "whisper-cpp" || endpointType === "vertex-transcribe";
     rows.model.hidden = browser || live || google || endpointType === "whisper-cpp";
-    rows.vertex.hidden = browser || live || endpointType !== "vertex-transcribe";
+    rows.vertex.hidden = browser || endpointType !== "vertex-transcribe";
     if (!rows.vertex.hidden) void refreshVertexStatus();
   }
 

@@ -1,6 +1,8 @@
 // Capture microphone samples as provider-sized mono PCM16 chunks. Live APIs
 // require raw PCM, unlike the record-then-upload path which sends WAV files.
 
+import { createVoiceGate } from "./silence.js";
+
 export function resamplePCM16(input, inputRate, outputRate) {
   if (!input.length || inputRate <= 0 || outputRate <= 0) return new Int16Array();
   const length = Math.max(1, Math.floor(input.length * outputRate / inputRate));
@@ -40,9 +42,20 @@ export async function createPCMCapture(stream, outputRate, onChunk, onError) {
   mute.connect(context.destination);
   let stopped = false;
   let pending = Promise.resolve();
+  const voiceGate = createVoiceGate();
+  let firstVoiceAt = null;
+  let lastVoiceAt = null;
+  let heardVoice = false;
   processor.onaudioprocess = event => {
     if (stopped) return;
     const input = event.inputBuffer.getChannelData(0);
+    const rms = Math.sqrt(input.reduce((sum, sample) => sum + sample * sample, 0) / input.length);
+    if (voiceGate(rms)) {
+      const now = performance.now();
+      if (firstVoiceAt === null || lastVoiceAt === null || now - lastVoiceAt > 300) firstVoiceAt = now;
+      if (now - firstVoiceAt >= 50) heardVoice = true;
+      lastVoiceAt = now;
+    }
     const encoded = pcm16ToBase64(resamplePCM16(input, context.sampleRate, outputRate));
     pending = pending.then(() => onChunk(encoded)).catch(error => {
       stopped = true;
@@ -50,6 +63,7 @@ export async function createPCMCapture(stream, outputRate, onChunk, onError) {
     });
   };
   return {
+    heardVoice: () => heardVoice,
     async stop() {
       if (!stopped) {
         stopped = true;

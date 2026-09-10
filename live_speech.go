@@ -1,12 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -57,10 +56,10 @@ func (a *App) StartLiveSpeech() (string, error) {
 	if speech.Provider != config.ProviderLive {
 		return "", errors.New("live speech is not selected")
 	}
-	if speech.EndpointType != config.EndpointOpenAI && speech.EndpointType != config.EndpointGemini {
-		return "", errors.New("live speech supports OpenAI and Gemini only")
+	if speech.EndpointType != config.EndpointOpenAI && speech.EndpointType != config.EndpointGemini && speech.EndpointType != config.EndpointVertex {
+		return "", errors.New("live speech supports OpenAI, Gemini API, and Vertex AI only")
 	}
-	if strings.TrimSpace(speech.APIKey) == "" {
+	if speech.EndpointType != config.EndpointVertex && strings.TrimSpace(speech.APIKey) == "" {
 		return "", errors.New("API key is required")
 	}
 
@@ -76,9 +75,17 @@ func (a *App) StartLiveSpeech() (string, error) {
 	if speech.EndpointType == config.EndpointOpenAI {
 		endpoint = "wss://api.openai.com/v1/realtime?intent=transcription"
 		headers.Set("Authorization", "Bearer "+speech.APIKey)
-	} else {
+	} else if speech.EndpointType == config.EndpointGemini {
 		endpoint = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 		headers.Set("x-goog-api-key", speech.APIKey)
+	} else {
+		token, err := a.vertexOAuthAccessToken()
+		if err != nil {
+			cancel()
+			return "", err
+		}
+		endpoint = "wss://aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmBidiService/BidiGenerateContent"
+		headers.Set("Authorization", "Bearer "+token)
 	}
 	conn, _, err := websocket.Dial(ctx, endpoint, &websocket.DialOptions{HTTPHeader: headers, HTTPClient: &http.Client{Transport: publicNetworkTransport()}})
 	if err != nil {
@@ -91,12 +98,45 @@ func (a *App) StartLiveSpeech() (string, error) {
 		cancel()
 		return "", fmt.Errorf("live speech setup failed: %w", err)
 	}
+	if err := waitLiveSpeechReady(s); err != nil {
+		_ = conn.Close(websocket.StatusPolicyViolation, "setup rejected")
+		cancel()
+		return "", fmt.Errorf("live speech setup failed: %w", err)
+	}
 
 	a.liveMu.Lock()
 	a.liveSpeech = s
 	a.liveMu.Unlock()
 	go a.readLiveSpeech(s)
 	return id, nil
+}
+
+// Providers require setup acknowledgement before accepting audio. Waiting here
+// also turns an asynchronous setup rejection into a useful start error.
+func waitLiveSpeechReady(s *liveSpeechSession) error {
+	ctx, cancel := context.WithTimeout(s.ctx, 15*time.Second)
+	defer cancel()
+	for {
+		_, data, err := s.conn.Read(ctx)
+		if err != nil {
+			return err
+		}
+		var message map[string]any
+		if err := json.Unmarshal(data, &message); err != nil {
+			return errors.New("invalid live speech setup response")
+		}
+		if remote, ok := message["error"].(map[string]any); ok {
+			return errors.New(liveProviderError(s.provider, remote))
+		}
+		if s.provider == config.EndpointOpenAI {
+			kind, _ := message["type"].(string)
+			if kind == "session.updated" {
+				return nil
+			}
+		} else if message["setupComplete"] != nil || message["setup_complete"] != nil {
+			return nil
+		}
+	}
 }
 
 func liveSpeechSetup(speech config.SpeechConfig) any {
@@ -112,9 +152,11 @@ func liveSpeechSetup(speech config.SpeechConfig) any {
 		return map[string]any{"type": "session.update", "session": map[string]any{
 			"type": "transcription",
 			"audio": map[string]any{"input": map[string]any{
-				"format":         map[string]any{"type": "audio/pcm", "rate": 24000},
-				"transcription":  transcription,
-				"turn_detection": map[string]any{"type": "server_vad", "prefix_padding_ms": 300, "silence_duration_ms": 700},
+				"format":        map[string]any{"type": "audio/pcm", "rate": 24000},
+				"transcription": transcription,
+				// gpt-live-transcribe currently rejects turn detection. The client
+				// commits the input buffer explicitly when recording stops.
+				"turn_detection": nil,
 			}},
 		}}
 	}
@@ -122,8 +164,12 @@ func liveSpeechSetup(speech config.SpeechConfig) any {
 	if language != "" {
 		languages = append(languages, language)
 	}
+	model := "models/gemini-3.5-transcribe-live"
+	if speech.EndpointType == config.EndpointVertex {
+		model = fmt.Sprintf("projects/%s/locations/global/publishers/google/models/gemini-3.5-transcribe-live-preview", speech.VertexProjectID)
+	}
 	return map[string]any{"setup": map[string]any{
-		"model":                   "models/gemini-3.5-transcribe-live",
+		"model":                   model,
 		"generationConfig":        map[string]any{"responseModalities": []string{"TEXT"}},
 		"inputAudioTranscription": map[string]any{"languageCodes": languages, "mode": "SMART"},
 	}}
@@ -156,11 +202,9 @@ func (a *App) FinishLiveSpeech(sessionID string) error {
 	s.finishing.Store(true)
 	var payload any
 	if s.provider == config.EndpointOpenAI {
-		// With server VAD an explicit commit can fail when the last pause already
-		// committed the buffer. A short PCM silence flushes an active turn and is
-		// harmless when the buffer is already empty.
-		silence := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0}, 24000*2))
-		payload = map[string]any{"type": "input_audio_buffer.append", "audio": silence}
+		// Turn detection is disabled for gpt-live-transcribe, so stopping the
+		// recording is the one authoritative boundary for this audio turn.
+		payload = map[string]any{"type": "input_audio_buffer.commit"}
 	} else {
 		payload = map[string]any{"realtimeInput": map[string]any{"audioStreamEnd": true}}
 	}
@@ -223,14 +267,34 @@ func (a *App) readLiveSpeech(s *liveSpeechSession) {
 			if s.ctx.Err() == nil && s.finishing.Load() {
 				a.emitLiveSpeech(liveSpeechEventData{SessionID: s.id, Kind: "done"})
 			} else if s.ctx.Err() == nil {
-				a.emitLiveSpeech(liveSpeechEventData{SessionID: s.id, Kind: "error", Message: "live speech connection closed"})
+				message := liveConnectionError(s.provider, err)
+				log.Printf("live speech connection error (%s): %s", s.provider, message)
+				a.emitLiveSpeech(liveSpeechEventData{SessionID: s.id, Kind: "error", Message: message})
 			}
 			return
 		}
 		for _, event := range normalizeLiveSpeechMessage(s.id, s.provider, data) {
+			if event.Kind == "error" {
+				log.Printf("live speech provider error (%s): %s", s.provider, event.Message)
+			}
 			a.emitLiveSpeech(event)
 		}
 	}
+}
+
+func liveConnectionError(provider string, err error) string {
+	name := map[string]string{config.EndpointOpenAI: "OpenAI", config.EndpointGemini: "Gemini API", config.EndpointVertex: "Vertex AI"}[provider]
+	if name == "" {
+		name = "Live speech"
+	}
+	detail := strings.TrimSpace(err.Error())
+	if len(detail) > 500 {
+		detail = detail[:500] + "…"
+	}
+	if detail == "" {
+		detail = "connection closed"
+	}
+	return name + ": " + detail
 }
 
 func normalizeLiveSpeechMessage(sessionID, provider string, data []byte) []liveSpeechEventData {
@@ -239,8 +303,7 @@ func normalizeLiveSpeechMessage(sessionID, provider string, data []byte) []liveS
 		return []liveSpeechEventData{{SessionID: sessionID, Kind: "error", Message: "invalid live speech response"}}
 	}
 	if remote, ok := message["error"].(map[string]any); ok {
-		_ = remote
-		return []liveSpeechEventData{{SessionID: sessionID, Kind: "error", Message: "live speech provider returned an error"}}
+		return []liveSpeechEventData{{SessionID: sessionID, Kind: "error", Message: liveProviderError(provider, remote)}}
 	}
 	if provider == config.EndpointOpenAI {
 		kind, _ := message["type"].(string)
@@ -281,6 +344,31 @@ func normalizeLiveSpeechMessage(sessionID, provider string, data []byte) []liveS
 		}
 	}
 	return result
+}
+
+func liveProviderError(provider string, remote map[string]any) string {
+	name := map[string]string{config.EndpointOpenAI: "OpenAI", config.EndpointGemini: "Gemini API", config.EndpointVertex: "Vertex AI"}[provider]
+	if name == "" {
+		name = "Live speech"
+	}
+	message, _ := remote["message"].(string)
+	message = strings.TrimSpace(message)
+	if len(message) > 500 {
+		message = message[:500] + "…"
+	}
+	details := []string{}
+	for _, key := range []string{"code", "type", "status", "param"} {
+		if value, ok := remote[key]; ok && value != nil && fmt.Sprint(value) != "" {
+			details = append(details, fmt.Sprintf("%s=%v", key, value))
+		}
+	}
+	if message == "" {
+		message = "live transcription failed"
+	}
+	if len(details) > 0 {
+		message += " (" + strings.Join(details, ", ") + ")"
+	}
+	return name + ": " + message
 }
 
 // Kept as a seam for protocol-focused tests without a live service.

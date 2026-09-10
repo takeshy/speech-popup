@@ -21,7 +21,7 @@ var messages = map[string]string{
 	"ホットキー %q を解釈できません: A-Z, 0-9, F1-F24 と Ctrl/Shift/Alt/Win を + で繋いでください":                                                          "Cannot parse hotkey %q: combine A-Z, 0-9 or F1-F24 with Ctrl/Shift/Alt/Win using +",
 	"provider %q は browser または openai-compatible を指定してください":                                                                          "Provider %q must be browser or openai-compatible",
 	"provider %q は browser / live / openai-compatible のいずれかを指定してください":                                                                "Provider %q must be browser, live, or openai-compatible",
-	"ライブ書き起こしは OpenAI または Gemini API を指定してください":                                                                                      "Select OpenAI or Gemini API for live transcription",
+	"ライブ書き起こしは OpenAI / Gemini API / Vertex AI のいずれかを指定してください":                                                                       "Select OpenAI, Gemini API, or Vertex AI for live transcription",
 	"ライブ書き起こしの API Key を指定してください":                                                                                                    "Specify the API key for live transcription",
 	"endpoint_type %q は openai / whisper-cpp / custom / gemini-transcribe / vertex-transcribe / azure-mai-transcribe のいずれかを指定してください": "Endpoint type %q must be openai / whisper-cpp / custom / gemini-transcribe / vertex-transcribe / azure-mai-transcribe",
 	"発話を区切る無音は 0〜10 秒の範囲で指定してください":                                                                                                   "The pause between utterances must be between 0 and 10 seconds",

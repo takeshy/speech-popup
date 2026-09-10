@@ -195,10 +195,10 @@ func speechFromView(v SpeechView) (*SpeechConfig, error) {
 	if s.Provider == ProviderBrowser {
 		return &s, nil
 	}
-	if s.Provider == ProviderLive && s.EndpointType != EndpointOpenAI && s.EndpointType != EndpointGemini {
-		return nil, errors.New(i18n.T("ライブ書き起こしは OpenAI または Gemini API を指定してください"))
+	if s.Provider == ProviderLive && s.EndpointType != EndpointOpenAI && s.EndpointType != EndpointGemini && s.EndpointType != EndpointVertex {
+		return nil, errors.New(i18n.T("ライブ書き起こしは OpenAI / Gemini API / Vertex AI のいずれかを指定してください"))
 	}
-	if s.Provider == ProviderLive && s.APIKey == "" {
+	if s.Provider == ProviderLive && s.EndpointType != EndpointVertex && s.APIKey == "" {
 		return nil, errors.New(i18n.T("ライブ書き起こしの API Key を指定してください"))
 	}
 	switch {

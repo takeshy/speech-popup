@@ -147,6 +147,17 @@ test("toggle cancels finalization instead of opening another microphone", async 
   assert.equal(h.timers.size, 0);
 });
 
+test("stopping without detected speech skips provider finalization", async () => {
+  const capture = { stop: async () => {}, heardVoice: () => false };
+  const h = harness({ capture });
+  await h.engine.toggle();
+  await h.engine.toggle();
+  assert.equal(h.calls.finishes, 0);
+  assert.equal(h.calls.stops, 1);
+  assert.equal(h.engine.state().status, "idle");
+  assert.equal(h.timers.size, 0);
+});
+
 test("send phrase during finalization closes the connection immediately", async () => {
   const h = harness();
   await h.engine.toggle();

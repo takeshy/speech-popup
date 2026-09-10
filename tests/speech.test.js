@@ -104,13 +104,16 @@ test("validateSpeechSettings reports what is missing", () => {
   }), /BCP-47/);
 });
 
-test("validateSpeechSettings accepts only OpenAI and Gemini in live mode", () => {
+test("validateSpeechSettings accepts OpenAI, Gemini, and Vertex in live mode", () => {
   assert.equal(validateSpeechSettings({ ...baseSettings, provider: "live", endpointType: "openai", apiKey: "key" }),
     "wss://api.openai.com/v1/realtime?intent=transcription");
   assert.equal(validateSpeechSettings({ ...baseSettings, provider: "live", endpointType: "gemini-transcribe", apiKey: "key" }),
     "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent");
+  assert.equal(validateSpeechSettings({ ...baseSettings, provider: "live", endpointType: "vertex-transcribe", apiKey: "", vertexProjectId: "project-1" }),
+    "wss://aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmBidiService/BidiGenerateContent");
   assert.throws(() => validateSpeechSettings({ ...baseSettings, provider: "live", endpointType: "custom", apiKey: "key" }), /OpenAI.*Gemini/);
   assert.throws(() => validateSpeechSettings({ ...baseSettings, provider: "live", endpointType: "openai", apiKey: "" }), /API Key/);
+  assert.throws(() => validateSpeechSettings({ ...baseSettings, provider: "live", endpointType: "vertex-transcribe", apiKey: "", vertexProjectId: "" }), /Vertex AI/);
 });
 
 test("encodeSpeechWav writes a 16 kHz mono header", async () => {
@@ -342,12 +345,13 @@ test("spoken Enter inserts a line break and preserves the preceding punctuation"
 });
 
 
-test("Gemini empty successful responses explain that no transcript was returned", async () => {
+test("Gemini empty successful responses are treated as no speech", async () => {
   for (const content of [undefined, { parts: [] }, { parts: [{}] }, { parts: [{ text: " " }] }]) {
-    await assert.rejects(() => transcribeSpeech(encodeSpeechWav(Float32Array.from([0.1])),
+    const text = await transcribeSpeech(encodeSpeechWav(Float32Array.from([0.1])),
       { ...baseSettings, endpointType: "gemini-transcribe", apiKey: "gem-key" },
       async () => ({ status: 200, body: JSON.stringify({ candidates: [{ finishReason: "STOP", content }] }) }),
-      fakeSignal()), /Gemini.*Ctrl\+R/);
+      fakeSignal());
+    assert.equal(text, "");
   }
 });
 

@@ -39,7 +39,7 @@ func TestFromViewAcceptsARecordedConfiguration(t *testing.T) {
 	}
 }
 
-func TestFromViewAcceptsLiveOpenAIAndGeminiOnly(t *testing.T) {
+func TestFromViewAcceptsLiveOpenAIGeminiAndVertexOnly(t *testing.T) {
 	for _, endpoint := range []string{EndpointOpenAI, EndpointGemini} {
 		v := validView()
 		v.Speech.Provider = ProviderLive
@@ -50,6 +50,14 @@ func TestFromViewAcceptsLiveOpenAIAndGeminiOnly(t *testing.T) {
 		}
 	}
 	v := validView()
+	v.Speech.Provider = ProviderLive
+	v.Speech.EndpointType = EndpointVertex
+	v.Speech.APIKey = ""
+	v.Speech.VertexProjectID = "project-1"
+	if _, err := FromView(v); err != nil {
+		t.Fatalf("live Vertex: %v", err)
+	}
+	v = validView()
 	v.Speech.Provider = ProviderLive
 	v.Speech.EndpointType = EndpointCustom
 	v.Speech.APIKey = "test-key"
