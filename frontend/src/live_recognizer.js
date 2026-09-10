@@ -7,30 +7,43 @@ export function liveSpeechSupported() {
     !!(globalThis.AudioContext ?? globalThis.webkitAudioContext);
 }
 
-export function createLiveRecognizer({ getSettings, getBase, getText, onInput, onSend, onState, liveTransport, capture = createPCMCapture }) {
+const transportQueues = new WeakMap();
+
+export function createLiveRecognizer({ getSettings, getBase, getContext, getText, onInput, onSend, onState, liveTransport, capture = createPCMCapture }) {
   let active = null;
   let ending = null;
+  // Serialize connection changes: a cancelled dial must close before a new start.
+  const connection = action => {
+    const result = (transportQueues.get(liveTransport) ?? Promise.resolve()).then(action);
+    transportQueues.set(liveTransport, result.catch(() => {}));
+    return result;
+  };
   const state = { status: "idle", error: "", silenceHint: "", retainedCount: 0, meterStream: null };
   const publish = changes => { Object.assign(state, changes); onState({ ...state }); };
 
   async function stopSession(current, finish) {
-    if (!current || current.stopping) return;
+    if (!current || (current.stopping && finish)) return;
     current.stopping = true;
-    active = null;
+    if (active === current) active = null;
     ending = finish ? current : null;
     clearTimeout(current.finishTimer);
-    try { await current.capture?.stop(); } catch {}
     current.stream?.getTracks().forEach(track => track.stop());
+    const closed = finish ? null : connection(() => liveTransport.stop()).catch(() => {});
+    if (!finish) publish({ status: "idle", meterStream: null });
+    try { await current.capture?.stop(); } catch {}
     try {
-      if (finish) await liveTransport.finish(current.id);
-      else await liveTransport.stop();
+      if (finish && ending === current) await liveTransport.finish(current.id);
+      else if (closed) await closed;
     } catch (caught) {
       if (finish) publish({ error: t("ライブ書き起こしの終了に失敗しました: {0}", errorMessage(caught)) });
     }
-    if (!finish) publish({ status: "idle", meterStream: null });
   }
 
   async function toggle() {
+    if (ending || (active && state.status === "starting")) {
+      await cancel();
+      return;
+    }
     if (active) {
       const current = active;
       current.ending = true;
@@ -38,7 +51,7 @@ export function createLiveRecognizer({ getSettings, getBase, getText, onInput, o
       await stopSession(current, true);
       if (ending === current) {
         current.finishTimer = setTimeout(() => {
-          void liveTransport.stop();
+          void connection(() => liveTransport.stop());
           ending = null;
           publish({ status: "idle", meterStream: null });
         }, 8000);
@@ -51,27 +64,59 @@ export function createLiveRecognizer({ getSettings, getBase, getText, onInput, o
       return;
     }
     const settings = { ...getSettings() };
+    const current = { settings, stream: null, id: "", capture: null, committed: getBase(), partial: "", stopping: false, ending: false, finishTimer: null, openAIItems: new Map(), ignoredItems: new Set(), ignoreGemini: false };
+    current.lastRendered = current.committed;
+    current.lastContext = getContext?.();
+    active = current;
     try {
       validateSpeechSettings(settings);
       publish({ status: "starting" });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const current = { settings, stream, id: "", capture: null, committed: getBase(), partial: "", stopping: false, ending: false, finishTimer: null, openAIItems: new Map() };
-      ending = null;
-      active = current;
-      current.id = await liveTransport.start();
+      if (active !== current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      current.stream = stream;
+      current.id = await connection(() => liveTransport.start());
+      if (active !== current) return;
       current.capture = await capture(stream, settings.endpointType === "openai" ? 24000 : 16000,
         chunk => liveTransport.send(current.id, chunk),
         caught => fail(current, caught));
+      if (active !== current) {
+        await current.capture.stop();
+        return;
+      }
       publish({ status: "recording", meterStream: stream });
     } catch (caught) {
-      if (active) await stopSession(active, false);
-      publish({ status: "idle", meterStream: null, error: t("ライブ書き起こしを開始できません: {0}", errorMessage(caught)) });
+      if (active !== current) return;
+      const stopped = stopSession(current, false);
+      publish({ error: t("ライブ書き起こしを開始できません: {0}", errorMessage(caught)) });
+      await stopped;
     }
+  }
+
+  function preserveEdits(current) {
+    const base = getBase();
+    const context = getContext?.();
+    if (base === current.lastRendered && context === current.lastContext) return;
+    current.committed = base;
+    current.lastRendered = base;
+    current.lastContext = context;
+    for (const id of current.openAIItems.keys()) current.ignoredItems.add(id);
+    current.openAIItems.clear();
+    if (current.partial && current.settings.endpointType !== "openai") current.ignoreGemini = true;
+    current.partial = "";
+  }
+
+  function render(current, text) {
+    onInput(text);
+    current.lastRendered = text;
+    current.lastContext = getContext?.();
   }
 
   function renderPartial(current) {
     const draft = speechDraft(current.committed, current.partial, false, current.settings.sendPhrase);
-    onInput(draft.text);
+    render(current, draft.text);
   }
 
   function commit(current, text, remainingPartial = "") {
@@ -79,34 +124,34 @@ export function createLiveRecognizer({ getSettings, getBase, getText, onInput, o
     const draft = speechDraft(current.committed, text, true, current.settings.sendPhrase, false, false,
       current.settings.symbolCommands, current.settings.replacements);
     current.committed = draft.text;
-    onInput(remainingPartial ? speechDraft(draft.text, remainingPartial, false, current.settings.sendPhrase).text : draft.text);
+    render(current, remainingPartial ? speechDraft(draft.text, remainingPartial, false, current.settings.sendPhrase).text : draft.text);
     if (draft.send) {
       clearTimeout(current.finishTimer);
-      ending = null;
       void stopSession(current, false);
       onSend(getText?.() ?? draft.text);
       return;
     }
-    if (current.ending) {
-      clearTimeout(current.finishTimer);
-      void liveTransport.stop();
-      ending = null;
-      publish({ status: "idle", meterStream: null });
-    }
+    // More turns may still be in flight; only done (or cancellation) ends the session.
   }
 
   function handleEvent(event) {
     const target = active ?? ending;
     if (!target || event.sessionId !== target.id) return;
     if (event.kind === "error") return fail(target, new Error(event.message || "live speech failed"));
+    preserveEdits(target);
     if (event.kind === "done") {
+      clearTimeout(target.finishTimer);
       target.partial = "";
-      onInput(target.committed);
+      render(target, target.committed);
       ending = null;
       publish({ status: "idle", meterStream: null });
       return;
     }
     if (target.settings.endpointType === "openai") {
+      if (target.ignoredItems.has(event.itemId)) {
+        if (event.kind === "final") target.ignoredItems.delete(event.itemId);
+        return;
+      }
       if (event.kind === "delta") {
         target.openAIItems.set(event.itemId, (target.openAIItems.get(event.itemId) ?? "") + event.text);
         target.partial = [...target.openAIItems.values()].join("");
@@ -115,6 +160,8 @@ export function createLiveRecognizer({ getSettings, getBase, getText, onInput, o
         target.openAIItems.delete(event.itemId);
         commit(target, event.text, [...target.openAIItems.values()].join(""));
       }
+    } else if (target.ignoreGemini) {
+      if (event.kind === "final") target.ignoreGemini = false;
     } else if (event.kind === "interim") {
       target.partial = event.text;
       renderPartial(target);
@@ -124,23 +171,18 @@ export function createLiveRecognizer({ getSettings, getBase, getText, onInput, o
   }
 
   async function fail(current, caught) {
-    if (active === current) await stopSession(current, false);
-    else await liveTransport.stop();
-    ending = null;
-    publish({ status: "idle", meterStream: null, error: t("ライブ書き起こしに失敗しました: {0}", errorMessage(caught)) });
+    if (active !== current && ending !== current) return;
+    const stopped = stopSession(current, false);
+    publish({ error: t("ライブ書き起こしに失敗しました: {0}", errorMessage(caught)) });
+    await stopped;
   }
 
   const unsubscribe = liveTransport.onEvent(handleEvent);
   const cancel = async () => {
-    if (active) await stopSession(active, false);
-    else if (ending) {
-      clearTimeout(ending.finishTimer);
-      ending = null;
-      await liveTransport.stop();
-      publish({ status: "idle", meterStream: null });
-    }
+    const current = active ?? ending;
+    if (current) await stopSession(current, false);
   };
-  const discard = async () => { await cancel(); unsubscribe?.(); };
+  const discard = async () => { unsubscribe?.(); await cancel(); };
   return { toggle, retry: () => {}, stop: cancel, discard,
     state: () => ({ ...state }), recording: () => state.status === "recording", busy: () => state.status !== "idle" };
 }
