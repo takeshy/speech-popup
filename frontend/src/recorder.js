@@ -1,4 +1,5 @@
 import { t } from "./i18n.js";
+import { speechErrorMessage as errorMessage } from "./speech_errors.js";
 // Record-then-transcribe driver, ported from gemihub-desktop's
 // src/llm/useRecordedSpeech.ts with the React hook turned into a plain object.
 //
@@ -243,15 +244,4 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
 
   return { toggle, retry, stop, discard: () => stop(false), state: () => ({ ...state }),
     recording: () => state.status === "recording", busy: () => state.status !== "idle" };
-}
-
-function errorMessage(caught) {
-  if (caught instanceof Error) {
-    // getUserMedia rejects with a DOMException whose message is often empty.
-    if (caught.name === "NotAllowedError") return t("マイクの使用が許可されていません。");
-    if (caught.name === "NotFoundError") return t("マイクが見つかりません。");
-    if (caught.name === "AbortError") return t("中断されました。");
-    return caught.message || caught.name;
-  }
-  return String(caught);
 }

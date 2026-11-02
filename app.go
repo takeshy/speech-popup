@@ -28,7 +28,7 @@ const appIdentifier = "speech-popup"
 // bindings.
 type App struct {
 	application *application.App
-	window      *application.WebviewWindow
+	window      application.Window
 	cfg         *config.Config
 	store       *store.Store
 	copier      *clipboard.Copier
@@ -303,6 +303,13 @@ func (a *App) hidePopupLocked() {
 	a.pasteAfterHide = false
 	a.mu.Unlock()
 
+	// macOS can bring a native window forward without ShowPopup updating our
+	// cached flag. A plain close must still hide it, even with no copied text.
+	nativeVisible := a.window != nil && a.window.IsVisible()
+	log.Printf("popup hide: cachedVisible=%t nativeVisible=%t autoPaste=%t", wasVisible, nativeVisible, doPaste)
+	if nativeVisible {
+		wasVisible = true
+	}
 	if !wasVisible && !doPaste {
 		return
 	}
@@ -315,7 +322,16 @@ func (a *App) hidePopupLocked() {
 			log.Printf("history flush: %v", err)
 		}
 	}
-	a.window.Hide()
+	if a.window != nil {
+		a.window.Hide()
+		if a.application != nil {
+			window := a.window
+			// WebKit's occlusion state updates on the next Cocoa run-loop pass.
+			time.AfterFunc(100*time.Millisecond, func() {
+				log.Printf("popup hide: nativeVisible after hide=%t", window.IsVisible())
+			})
+		}
+	}
 	if a.desktop == nil {
 		return
 	}
@@ -332,7 +348,10 @@ func (a *App) hidePopupLocked() {
 
 // NotifyReady is called by the frontend once its settings and history have
 // loaded; a queued show request is served now.
-func (a *App) NotifyReady() {
+func (a *App) NotifyReady(capabilities map[string]bool) {
+	log.Printf("frontend ready: secureContext=%t getUserMedia=%t MediaRecorder=%t OfflineAudioContext=%t",
+		capabilities["secureContext"], capabilities["getUserMedia"],
+		capabilities["mediaRecorder"], capabilities["offlineAudioContext"])
 	a.actionMu.Lock()
 	defer a.actionMu.Unlock()
 

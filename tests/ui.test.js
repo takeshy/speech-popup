@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import { createRecorder, speechSupported } from "../frontend/src/recorder.js";
+import { createLiveRecognizer } from "../frontend/src/live_recognizer.js";
+import { createBrowserRecognizer } from "../frontend/src/browser_speech.js";
 import { createTextEditor } from "../frontend/src/editor.js";
 import { createAutoSizer } from "../frontend/src/autosize.js";
 import { defaultSpeechCommands, speechCommandsFor, splitCommandPhrases } from "../frontend/src/speech_commands.js";
@@ -29,7 +31,14 @@ async function until(predicate, detail = "") {
 async function setup(t, { history = [], copyFails = false, vertexClient = null, speech = {}, respond = null, recordingStep = 3000 } = {}) {
   let microphoneRequests = 0;
   let recordingTime = 0;
+  const browserRecognitions = [];
   const audioGlobals = {
+    SpeechRecognition: class {
+      constructor() { browserRecognitions.push(this); }
+      start() {}
+      abort() {}
+    },
+    AudioContext: class {},
     navigator: { mediaDevices: { getUserMedia: async () => {
       microphoneRequests++;
       return { getTracks: () => [{ stop() {} }] };
@@ -153,6 +162,10 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
   let ready;
   const booted = new Promise((resolve) => { ready = resolve; });
   const requests = [];
+  const liveSessions = [];
+  const liveFinishes = [];
+  let liveSession = null;
+  let liveSilence = null;
   const vertexConnections = [];
   const app = {
     LoadConfig: async () => structuredClone(config),
@@ -172,6 +185,14 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
       return text !== "";
     },
     HidePopup: async () => { hides++; events["popup:hidden"](); },
+    StartLiveSpeech: async () => {
+      liveSession = `live-${liveSessions.length + 1}`;
+      liveSessions.push(liveSession);
+      return liveSession;
+    },
+    StopLiveSpeech: async () => { liveSession = null; },
+    FinishLiveSpeech: async session => { liveFinishes.push(session); },
+    SendLiveSpeechAudio: async () => {},
     SpeechHTTPRequest: async (request) => {
       requests.push(request);
       if (respond) return respond(request);
@@ -187,11 +208,18 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
       EventsOn(name, callback) { events[name] = callback; }
     } },
     createRecorder: options => createRecorder({ ...options, now: () => recordingTime }), createTextEditor, createAutoSizer, speechSupported, endpointPreset, isGoogleEndpoint, validateSpeechSettings,
+    createLiveRecognizer: options => createLiveRecognizer({ ...options,
+      capture: async () => ({ stop: async () => {} }),
+      watchSilence: (_stream, _seconds, silence) => {
+        liveSilence = silence;
+        return () => { liveSilence = null; };
+      } }),
+    createBrowserRecognizer,
     t: translate, getLanguage, setLanguage, speechLanguageOptions, defaultSendPhrase, initialSendPhrase, sendPhraseLanguage, defaultSpeechCommands, speechCommandsFor, splitCommandPhrases, parseReplacementRules, serializeReplacementRules,
     Option: class { constructor(text, value) { this.textContent = text; this.value = value; } },
     localizeDOM() {},
     createAudioMeter: () => ({ attach: async () => true }),
-    browserSpeechSupported: () => false,
+    browserSpeechSupported: () => speech.provider === "browser",
     URL, structuredClone, setTimeout, clearTimeout, clearInterval,
     setInterval(...args) { const timer = setInterval(...args); timers.add(timer); return timer; }
   });
@@ -201,8 +229,68 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
   });
   vm.runInContext(source, context);
   await booted;
-  return { element, events, requests, vertexConnections, history: () => JSON.parse(savedHistory),
+  return { element, events, requests, vertexConnections, liveSessions,
+    browserRecognitions,
+    liveFinishes, liveSilence: () => liveSilence?.(),
+    liveSession: () => liveSession, history: () => JSON.parse(savedHistory),
     config: () => structuredClone(config), hides: () => hides, microphoneRequests: () => microphoneRequests };
+}
+
+test("browser permission errors are not described as a missing recognition backend", async (t) => {
+  const ui = await setup(t, { speech: { provider: "browser", autoStart: true } });
+  ui.events["popup:shown"]("");
+  await until(() => ui.element("mode").dataset.recording === "true");
+  assert.equal(ui.microphoneRequests(), 1);
+  ui.browserRecognitions[0].onerror({ error: "not-allowed" });
+  assert.match(ui.element("error").textContent, /マイクの使用が許可されていません/);
+  assert.doesNotMatch(ui.element("error").textContent, /バックエンド/);
+});
+
+test("saying 以上 in OpenAI Live confirms, copies and closes without pressing Stop", async (t) => {
+  const ui = await setup(t, { speech: { provider: "live", autoStart: true, sendPhrase: "以上", silenceSeconds: 3 } });
+  ui.events["popup:shown"]("");
+  await until(() => ui.element("mode").dataset.recording === "true");
+  const sessionId = ui.liveSession();
+  ui.events["speech:live"]({ sessionId, kind: "delta", itemId: "a", text: "入力した文章。以上。" });
+  ui.liveSilence();
+  await until(() => ui.liveFinishes.length === 1);
+  assert.equal(ui.hides(), 0, "a tentative command must await final confirmation");
+  ui.events["speech:live"]({ sessionId, kind: "final", itemId: "a", text: "入力した文章。以上。" });
+  await until(() => ui.hides() === 1);
+  assert.equal(ui.element("input").value, "");
+  assert.equal(ui.history()[0], "入力した文章。");
+  ui.events["popup:shown"]("");
+  await until(() => ui.liveSessions.length === 2 && ui.element("mode").dataset.recording === "true");
+});
+
+for (const endpointType of ["openai", "gemini-transcribe"]) {
+ for (const close of ["close", "copy"]) {
+  test(`${endpointType} Live transcribes again after ${close} and reopen`, async (t) => {
+    const ui = await setup(t, { speech: { provider: "live", endpointType, autoStart: true } });
+    const kind = endpointType === "openai" ? "delta" : "interim";
+    ui.events["popup:shown"]("");
+    await until(() => ui.element("mode").dataset.recording === "true");
+    const first = ui.liveSession();
+    ui.events["speech:live"]({ sessionId: first, kind, itemId: "a", text: "最初の発話" });
+    assert.equal(ui.element("input").value, "最初の発話");
+    ui.element(close).fire("click");
+    await until(() => ui.hides() === 1);
+    ui.events["popup:shown"]("");
+    await until(() => ui.liveSessions.length === 2 && ui.element("mode").dataset.recording === "true");
+    const second = ui.liveSession();
+    assert.notEqual(second, first);
+    ui.events["speech:live"]({ sessionId: first, kind, itemId: "a", text: "遅れた結果" });
+    assert.equal(ui.element("input").value, "");
+    ui.events["speech:live"]({ sessionId: second, kind, itemId: "b", text: "開き直した後の発話" });
+    assert.equal(ui.element("input").value, "開き直した後の発話");
+    ui.element(close).fire("click");
+    await until(() => ui.hides() === 2);
+    ui.events["popup:shown"]("");
+    await until(() => ui.liveSessions.length === 3 && ui.element("mode").dataset.recording === "true");
+    ui.events["speech:live"]({ sessionId: ui.liveSession(), kind, itemId: "c", text: "さらに開き直した後の発話" });
+    assert.equal(ui.element("input").value, "さらに開き直した後の発話");
+  });
+ }
 }
 
 test("failed recording can be retried after correcting credentials in Settings", async (t) => {
@@ -249,6 +337,19 @@ test("copy failure preserves the draft and does not save history or hide", async
   assert.equal(ui.element("input").value, "draft");
   assert.deepEqual(ui.history(), ["previous"]);
   assert.equal(ui.hides(), 0);
+});
+
+test("Escape closes Live input while recording, without requiring any text to copy", async (t) => {
+  const ui = await setup(t, { speech: { provider: "live", autoStart: true } });
+  ui.events["popup:shown"]("");
+  await until(() => ui.element("mode").dataset.recording === "true");
+  ui.element("input").fire("keydown", { key: "Escape" });
+  await until(() => ui.hides() === 1);
+  assert.equal(ui.element("input").value, "");
+  ui.events["popup:shown"]("");
+  await until(() => ui.liveSessions.length === 2 && ui.element("mode").dataset.recording === "true");
+  ui.events["speech:live"]({ sessionId: ui.liveSession(), kind: "delta", itemId: "a", text: "再開後の発話" });
+  assert.equal(ui.element("input").value, "再開後の発話");
 });
 
 test("history restores on boot, returns to the draft, and persists copied text", async (t) => {

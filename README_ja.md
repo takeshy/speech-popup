@@ -44,7 +44,7 @@ Wails 製の常駐型 **音声入力ポップアップ**。ホットキーで呼
 
 UI・設定・ヘルプ・トレイメニューは英語と日本語に対応し、設定の **表示言語 → English / 日本語** で選択し、保存すると即時に切り替わります。未設定時の初期値は WebView の優先言語から判定します（日本語なら日本語、それ以外は英語）。書き起こす音声の言語とは別の設定です。
 
-音声は 16kHz モノラル WAV に変換してから送ります (WebM/Opus をデコードできないサーバーでも動くため)。録音は最長 5 分・20MB まで。
+録音して送信する方式では、音声を 16kHz モノラル WAV に変換します (WebM/Opus をデコードできないサーバーでも動くため)。この方式の録音は最長 5 分・20MB までです。Live 方式は録音中の音声を逐次送信します。
 
 HTTP リクエストは WebView からではなく Go 側のプロキシ (`SpeechHTTPRequest`) を通ります。CORS を回避でき、API Key がプリフライトに乗ることもありません。Vertex AI だけは専用の `VertexSpeechHTTPRequest` を通り、OAuth アクセストークンは**固定のモデル・エンドポイント以外には決して付きません**。
 
@@ -100,7 +100,7 @@ speech-popup version    バージョン表示
 - 編集 (`skk-popup` と同じ): `Ctrl+A/E` — 行頭/行末、`Ctrl+B/F` — 1文字左/右、`Ctrl+K/U` — 行末/行頭まで削除、`Ctrl+O` — 全選択
 - `Ctrl+C/X/V` — コピー/切り取り/貼り付け、`Ctrl+Z` — 元に戻す、`Ctrl+Shift+Z` / `Ctrl+Y` — やり直す。`Ctrl+K` は行末で押すと改行を削除して次の行と連結
 - `Ctrl+↑` / `Ctrl+↓` — テキスト履歴を移動 (最大 30 件。`Ctrl+↓` で下書きに戻る)
-- `Escape` / `Ctrl+[` — 録音中なら中止 / それ以外は閉じる (コピーせず入力内容は次回まで保持)
+- `Escape` / `Ctrl+[` — 録音・認識を中止して閉じる (コピーせず入力内容は次回まで保持)
 - ⋮ メニュー — 設定 / ヘルプ
 
 認識に失敗しても録音は保持されるので、`Ctrl+R` で同じ音声を新しいリクエストとして再送できます。失敗後に新しく録音を開始した場合は、失敗した保持音声を破棄し、新しい音声だけを送ります。認識が成功すると保持分の録音は消費されます。コピーに成功した時点で入力内容と残りの録音を破棄します。
@@ -152,9 +152,19 @@ Microsoft Store 版はパッケージ内の EXE をパス指定で起動でき�
 
 ### macOS
 
-キーボードショートカットは OS 側に委譲します: [Shortcuts.app](https://support.apple.com/guide/shortcuts-mac/intro-to-shortcuts-apdfebc4f80a/mac) で「シェルスクリプトを実行」→ `speech-popup show` を作り、キーを割り当ててください (skhd / Raycast / Hammerspoon でも可)。
+マイクの用途を宣言した `speech-popup.app` を起動してください。実行ファイル単体では WebView の録音 API が利用できない場合があります。自前ビルドでは `bin/speech-popup.app` が生成され、`open bin/speech-popup.app` で起動できます。
 
-初回実行時に**マイク**、および自動貼り付け・フォーカス復帰のための **Accessibility / Automation** 権限を求められます。設定の `paste_key` の `ctrl` は **Cmd** として扱われます。
+呼び出しキーは OS 側で設定します。[Shortcuts.app](https://support.apple.com/guide/shortcuts-mac/intro-to-shortcuts-apdfebc4f80a/mac) で「シェルスクリプトを実行」に次を指定し、詳細で **Ctrl+8** を割り当ててください。これは `speech-popup.app` を `~/Applications` に配置した例です。skhd / Raycast / Hammerspoon から同じコマンドを呼ぶこともできます。
+
+```sh
+"$HOME/Applications/speech-popup.app/Contents/MacOS/speech-popup" show
+```
+
+先にアプリを起動して常駐させてください。起動直後は入力窓を表示せず、メニューバーのマイクアイコンからも開けます。
+
+初回は**マイク**、ブラウザ認識では必要に応じて**音声認識**の使用を許可してください。ブラウザ認識も、マイクの許可取得を待ってから開始します。許可を拒否した場合は「システム設定 → プライバシーとセキュリティ」で確認してください。自動貼り付け・フォーカス復帰には `osascript` が使う **Accessibility / Automation** 権限も必要です。設定の `paste_key` の `ctrl` は **Cmd** として扱われます。
+
+**Ctrl+Space で録音の開始・停止ができない場合**は、「システム設定 → キーボード → キーボードショートカット → 入力ソース」で「前の入力ソースを選択」が同じキーを使っていないか確認してください。競合する場合はそのチェックを外すと録音に使えます。「入力メニューの次のソースを選択」の **Ctrl+Option+Space** は残せます。これは現在のユーザーの設定で、管理者権限は不要です。
 
 ## 設定
 
@@ -215,6 +225,10 @@ accelerator = "Ctrl+8"   # A-Z, 0-9, F1-F24 + Ctrl/Shift/Alt/Win   # A-Z, 0-9, F
 ### サービスごとの設定の記憶
 
 方式を **ライブ書き起こし** にすると、OpenAI は `gpt-live-transcribe`、Gemini API は `gemini-3.5-transcribe-live`、Vertex AI は `gemini-3.5-transcribe-live-preview` を使用します。途中結果を入力欄へ表示し、確定結果だけに置換・音声コマンド・コピーして閉じる合図を適用します。ライブ方式では Base URL と Model は固定されます。OpenAI と Gemini API は各サービスに保存した API Key、Vertex AI は保存済みのプロジェクトと Google OAuth 接続を再利用します。接続と認証情報は Go バックエンド側で扱われ、WebSocket URLには含めません。
+
+OpenAI Live では、途中結果の末尾に「コピーして閉じる」合図が現れ、設定した無音時間が続くと自動で認識結果の確定を要求します。確定結果にも合図が含まれる場合に、その語を除いてコピーして閉じます。無音時間が0の場合も、この合図だけは1秒の無音で確定を要求します。
+
+OpenAI Live は録音中に文章を手で修正したりカーソルを移動したりしても、その後に届く認識結果を現在の入力位置へ追加します。編集済みの部分を後から届く確定結果で上書きしません。ポップアップを閉じると録音と接続を終了し、再表示時は `auto_start = true` なら新しい接続で再開します。
 
 **Base URL・API Key・Model・言語・Vertex のプロジェクト ID** はサービスごとに記憶し、切り替えると前回の値を復元します。初めて選ぶサービスには初期値が入り、キーは空欄になります。**保存**すると全サービスの設定が `config.toml` に保存され、アプリ再起動後も保持されます。保存せず閉じた変更は破棄されます。無音秒数・自動録音・置換ルールは共通設定です。
 
@@ -282,6 +296,7 @@ Base URL に API のパスやクエリは付けません。アプリが [MAI Tra
 
 - Go 1.25 以降 (`.mise.toml` を同梱)
 - Node.js 22 以降 (フロントエンドのコピーとテストのみ。バンドラは使いません)
+- macOS のみ: Xcode Command Line Tools と Python 3 (`.app` の作成に使用)
 - Linux のみ: `libgtk-3-dev` と `libwebkit2gtk-4.1-dev` 相当 (Arch なら `webkit2gtk-4.1`)
 
 ```sh
@@ -293,6 +308,23 @@ install -Dm755 bin/speech-popup ~/.local/bin/speech-popup
 ```
 
 Linux ビルドは Wails v3 の `gtk3` タグを使い、WebKit2GTK 4.1 環境との互換性を維持します。
+
+Apple Silicon Mac では次の手順で `.app` をビルド・配置できます。更新時は、実行中の speech-popup を先に終了してください。
+
+```sh
+wails3 task darwin:build ARCH=arm64
+mkdir -p "$HOME/Applications"
+ditto bin/speech-popup.app "$HOME/Applications/speech-popup.app"
+open "$HOME/Applications/speech-popup.app"
+```
+
+マイクの用途を宣言した `Info.plist` を含む `.app` が生成されます。macOS の Release 成果物も、この `.app` を含む ZIP です。
+
+SDK とリンカーの不一致で `unknown architecture` / `tapi error: malformed file` が出る場合は、インストール済みの互換性のある SDK を `SDKROOT` で指定します。この Mac で確認した例は次のとおりです。SDK 名は環境に合わせて変更してください。
+
+```sh
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk wails3 task darwin:build ARCH=arm64
+```
 
 ## テスト
 
@@ -315,7 +347,7 @@ node --test tests/*.test.js  # 認識リクエストの組み立て・WAV 生成
 
 改行や折り返しで入力内容が増えるとウィンドウが広がり、画面の作業領域内まで拡大します。それ以上は入力位置が見えるように入力欄内をスクロールします。内容を減らすと設定した高さまで縮みます。自動調整で保存済みのサイズ設定は変更しません。
 
-設定は保存に成功すると閉じます。録音開始から2秒以内に停止した録音は、認識サービスへ送らず破棄します。設定画面を開くと録音を停止し、設定画面を閉じても自動では再開しません。
+設定は保存に成功すると閉じます。録音方式で手動停止した音声は、2秒未満でも認識サービスへ送信します。設定画面を開くと録音を停止し、設定画面を閉じても自動では再開しません。
 
 ### GitHub Release
 

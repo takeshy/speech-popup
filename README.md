@@ -83,7 +83,7 @@ The header displays the current transcription service. The tray menu provides Se
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z / Ctrl+Y | Redo |
 | Ctrl+↑ / Ctrl+↓ | Browse history / return to draft |
-| Escape / Ctrl+[ | Cancel active recording/transcription, otherwise close and keep the draft |
+| Escape / Ctrl+[ | Stop recording/transcription and close, keeping the text draft |
 
 Ctrl+K at the end of a line removes the newline and joins the next line. Editing keys match skk-popup. Ctrl+A means **start of line**; use Ctrl+O for select all.
 
@@ -112,7 +112,21 @@ bind = CTRL, 8, exec, speech-popup show
 exec-once = uwsm app -- speech-popup
 ```
 
-Check the actual class with `hyprctl clients`. Settings can generate a bind line for your chosen shortcut. On macOS, use an OS shortcut tool to run `speech-popup show`.
+Check the actual class with `hyprctl clients`. Settings can generate a bind line for your chosen shortcut.
+
+### macOS
+
+On macOS, launch the `speech-popup.app` bundle, which declares microphone usage; the bare executable may not expose WebKit's recording APIs. The macOS build creates `bin/speech-popup.app`; launch it with `open bin/speech-popup.app`. A shortcut can call `~/Applications/speech-popup.app/Contents/MacOS/speech-popup show` directly if the executable is not on your PATH.
+
+For an app installed in `~/Applications`, create a shortcut in Shortcuts.app with **Run Shell Script**, enter the following command, and assign **Ctrl+8** in its details. Start the app first so it is resident. Its popup is initially hidden; the menu-bar microphone icon also opens it.
+
+```sh
+"$HOME/Applications/speech-popup.app/Contents/MacOS/speech-popup" show
+```
+
+Allow **Microphone** access on first use and **Speech Recognition** access when requested for browser recognition. Browser recognition waits for microphone permission before starting. Review denied permissions in **System Settings → Privacy & Security**. Automatic paste and focus restoration also need the Accessibility/Automation permissions used by `osascript`.
+
+If **Ctrl+Space** does not start or stop recording, check **System Settings → Keyboard → Keyboard Shortcuts → Input Sources**. Disable **Select the previous input source** if it uses Ctrl+Space. **Ctrl+Option+Space** can remain assigned to the next input source. This changes the current user's settings and does not require administrator privileges.
 
 ## Configuration
 
@@ -155,6 +169,10 @@ accelerator = "Ctrl+8"
 ### Remembered service settings
 
 Choose **Live transcription** to use `gpt-live-transcribe` with OpenAI, `gemini-3.5-transcribe-live` with the Gemini API, or `gemini-3.5-transcribe-live-preview` with Vertex AI. Interim text is shown in the editor; replacements, voice commands, and the copy-and-close phrase run only on final text. Live Base URLs and models are fixed. OpenAI and Gemini API use the API key saved in their service profile; Vertex AI reuses its saved project and Google OAuth connection. The Go backend owns the connection and credentials, so credentials are not placed in the WebSocket URL.
+
+OpenAI Live automatically requests a final transcript when the interim text ends with the copy-and-close phrase and the configured silence duration passes. It removes the phrase and copies/closes only if the final transcript confirms it. With silence duration set to 0, this command still requests confirmation after a one-second pause.
+
+During OpenAI Live recording, keyboard edits and cursor movement preserve the text you have edited while new transcription continues at the current insertion point. Later final results do not overwrite those edits. Closing the popup stops recording and disconnects; reopening starts a new connection when `auto_start = true`.
 
 Settings remembers each service's **Base URL, API Key, Model, language, and Vertex project ID**. Switching services restores its previous values; a service used for the first time starts with its defaults and an empty key. Choose **Save** to persist all service profiles in `config.toml` across app restarts. Closing without saving discards edits. Silence duration, automatic recording and the replacement rules remain shared settings.
 
@@ -255,6 +273,8 @@ Store installations register `speech-popup.exe` as an app execution alias, so th
 
 Go 1.25+ and Node.js 22+ are required. Linux builds also need GTK3 and WebKit2GTK 4.1 development packages.
 
+macOS builds require Xcode Command Line Tools and Python 3 to create the app bundle.
+
 ```sh
 go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.12
 wails3 task linux:build ARCH=amd64
@@ -262,6 +282,22 @@ wails3 task windows:build ARCH=amd64
 wails3 task darwin:build ARCH=arm64
 npm test
 go test ./... # Linux: add -tags gtk3 when using the GTK3 dependencies
+```
+
+On Apple Silicon, install the built app as follows; quit an existing instance before updating:
+
+```sh
+mkdir -p "$HOME/Applications"
+ditto bin/speech-popup.app "$HOME/Applications/speech-popup.app"
+open "$HOME/Applications/speech-popup.app"
+```
+
+The build includes the microphone usage declaration in the app's `Info.plist`. The macOS Release asset is a ZIP containing this `.app` bundle.
+
+If an SDK/linker mismatch causes `unknown architecture` or `tapi error: malformed file`, select a compatible installed SDK with `SDKROOT`. For example, the following SDK worked on the Mac used to verify this build; adjust the SDK name to match your installation:
+
+```sh
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk wails3 task darwin:build ARCH=arm64
 ```
 
 Windows builds generate icon/version resources before compiling.
@@ -280,7 +316,7 @@ For recorded services, a pause splits the recording into requests; the microphon
 
 The popup grows with line breaks and wrapped text, within the available screen height. Beyond that, the editor scrolls to keep the insertion point visible. Removing text shrinks it toward the configured height; automatic sizing does not change your saved settings.
 
-Saving settings closes the dialog on success. Recorded audio stopped within two seconds of recording starting is discarded without sending it to the recognition service. Opening Settings stops recording; closing Settings does not restart it automatically.
+Saving settings closes the dialog on success. Manually stopped recordings are sent for transcription even when shorter than two seconds. Opening Settings stops recording; closing Settings does not restart it automatically.
 
 ### GitHub Releases
 

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Keep the CLI and keyboard shortcuts pointing at the bundled executable.
+bundle="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/speech-popup.app"
+if [ "$#" -eq 0 ]; then
+    exec /usr/bin/open "$bundle"
+fi
+exec "$bundle/Contents/MacOS/speech-popup" "$@"

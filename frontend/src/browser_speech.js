@@ -1,5 +1,6 @@
 import { applyReplacementRules } from "./replacements.js";
 import { t } from "./i18n.js";
+import { speechErrorMessage as errorMessage } from "./speech_errors.js";
 // Live dictation through the WebView's own SpeechRecognition, ported from
 // gemihub-desktop's src/llm/useChatSpeech.ts.
 //
@@ -31,14 +32,14 @@ export function createBrowserRecognizer({ getSettings, getBase, getContext, getT
       current.onerror = null;
       current.onend = null;
       current.onspeechstart = null;
-      current.abort();
+      try { current.abort(); } catch {}
     }
     meter?.getTracks().forEach((track) => track.stop());
     meter = null;
     publish({ status: "idle", meterStream: null });
   }
 
-  function toggle() {
+  async function toggle() {
     if (recognition) {
       stop();
       return;
@@ -53,8 +54,9 @@ export function createBrowserRecognizer({ getSettings, getBase, getContext, getT
     let base = getBase();
     let lastRendered = base;
     let lastContext = getContext?.();
+    let current;
     try {
-      const current = new Constructor();
+      current = new Constructor();
       recognition = current;
       const language = settings.language.trim();
       current.lang = !language || language.toLowerCase() === "auto"
@@ -114,6 +116,7 @@ export function createBrowserRecognizer({ getSettings, getBase, getContext, getT
         render();
       };
       current.onerror = (event) => {
+        if (recognition !== current) return;
         const messages = {
           "not-allowed": t("マイクの使用が許可されていません。"),
           "service-not-allowed": t("音声認識サービスが利用できません。"),
@@ -124,21 +127,24 @@ export function createBrowserRecognizer({ getSettings, getBase, getContext, getT
         publish({ error: t("音声認識に失敗しました: {0} ({1})", messages[event.error] ?? event.error, event.error) });
         stop();
       };
-      current.onend = stop;
-      publish({ status: "recording" });
-      current.start();
-      // Metering is optional: a failure here must not disable recognition.
-      void navigator.mediaDevices?.getUserMedia({ audio: true }).then((stream) => {
+      current.onend = () => { if (recognition === current) stop(); };
+      // WKWebView may reject SpeechRecognition until microphone permission
+      // has actually been acquired. Do this before start, just as Live does.
+      publish({ status: "starting" });
+      if (navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         if (recognition !== current) {
-          stream.getTracks().forEach((track) => track.stop());
+          stream.getTracks().forEach(track => track.stop());
           return;
         }
         meter = stream;
-        publish({ meterStream: stream });
-      }).catch(() => {});
+      }
+      current.start();
+      if (recognition === current) publish({ status: "recording", meterStream: meter });
     } catch (caught) {
+      if (current && recognition !== current) return;
       stop();
-      publish({ error: t("音声認識を開始できません: {0}", caught instanceof Error ? caught.message : String(caught)) });
+      publish({ error: t("音声認識を開始できません: {0}", errorMessage(caught)) });
     }
   }
 

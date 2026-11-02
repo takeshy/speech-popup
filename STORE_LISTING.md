@@ -56,6 +56,6 @@ This is a Wails/Go full-trust desktop application. `runFullTrust` is needed for 
 
 On first launch the app resides in the notification area. Right-click its microphone icon and open Settings. Browser speech recognition is the default but may not work in WebView2; use a recording-based service to test audio input. Configure your supported API account, or run a local whisper.cpp server and set its Base URL to `http://127.0.0.1:8080` (no API key required). The app does not bundle a local model or a free cloud subscription.
 
-Open the popup with Ctrl+8, or the tray menu if the key is occupied. Record speech, stop with Ctrl+Space, and press Enter to copy/paste. Escape cancels or hides. Settings can disable automatic recording and paste. The startup task is enabled after the first app launch and can be disabled in Windows Settings → Apps → Startup. Use the tray menu to quit.
+Open the popup with Ctrl+8, or the tray menu if the key is occupied. Record speech, stop with Ctrl+Space, and press Enter to copy/paste. Escape stops recording/transcription and closes the popup without copying. Settings can disable automatic recording and paste. The startup task is enabled after the first app launch and can be disabled in Windows Settings → Apps → Startup. Use the tray menu to quit.
 
 Add any private reviewer credentials through Partner Center's private notes only; never commit them here. Include concrete screenshots and test details from the exact submitted package.

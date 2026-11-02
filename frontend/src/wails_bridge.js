@@ -16,7 +16,12 @@ globalThis.window.go = {
       IsVisible: () => call("IsVisible"),
       LoadConfig: () => call("LoadConfig"),
       LoadHistory: () => call("LoadHistory"),
-      NotifyReady: () => call("NotifyReady"),
+      NotifyReady: () => call("NotifyReady", {
+        secureContext: globalThis.isSecureContext === true,
+        getUserMedia: !!globalThis.navigator?.mediaDevices?.getUserMedia,
+        mediaRecorder: typeof globalThis.MediaRecorder !== "undefined",
+        offlineAudioContext: typeof globalThis.OfflineAudioContext !== "undefined"
+      }),
       ReadClipboard: () => call("ReadClipboard"),
       SaveConfig: (view) => call("SaveConfig", view),
       SaveHistory: (data) => call("SaveHistory", data),

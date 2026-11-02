@@ -83,15 +83,18 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
 
   const helpText = () => [
     t("── 録音 ──"),
-    t("Ctrl+Space / ● 録音   録音の開始・停止 (停止すると認識が走る)"),
-    t("無音で発話を区切って変換 (録音は継続。Ctrl+Space で停止)"),
-    t("録音は最長 5 分。20MB を超えると停止します"),
+    t("Ctrl+Space / ● 録音   録音の開始・停止"),
+    ...(appInfo?.os === "darwin" ? [t("macOS: Ctrl+Space が効かない場合は、システム設定 → キーボード → キーボードショートカット → 入力ソースで同じキーの割り当てを解除してください。管理者権限は不要です。")] : []),
+    t("録音方式: 無音で発話を区切って変換 (録音は継続。Ctrl+Space で停止)"),
+    t("録音方式は最長 5 分。20MB を超えると停止します"),
     t("Ctrl+R / 再認識       保持している録音をもう一度サーバーへ送る"),
     t("Ctrl+D                保持している録音を破棄する"),
     t("設定した合図の言葉を最後に話すと、その語を除いてコピーして閉じる"),
+    t("OpenAI Live: 合図の後に設定した時間だけ黙ると認識を確定し、合図が確認できたらコピーして閉じます (無音時間が0なら1秒)。"),
     "",
     t("── 編集 ──"),
     t("認識結果はそのまま編集できます (通常のテキストエリア)"),
+    t("OpenAI Live は手動修正・カーソル移動後も現在の入力位置へ認識結果を追加します。"),
     t("Enter                 コピーして閉じる"),
     t("Shift+Enter           改行"),
     t("音声コマンド: 設定したフレーズで ?・改行・!・コピーして閉じる（発話末尾、認識確定時）"),
@@ -104,7 +107,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     t("Ctrl+↑ / Ctrl+↓       テキスト履歴を移動 (最大 30 件。Ctrl+↓ で下書きに戻る)"),
     "",
     t("── その他 ──"),
-    t("Escape / Ctrl+[       録音中なら中止 / それ以外は閉じる (次回表示時に履歴へ保存)"),
+    t("Escape / Ctrl+[       録音を中止して閉じる (次回表示時に履歴へ保存)"),
     t("ヘッダーをドラッグ    ウィンドウ移動"),
     t("⋮                     設定 / ヘルプ"),
     t("通知領域のアイコン    左クリックで表示・非表示、右クリックで 設定 / ヘルプ / 終了")
@@ -308,11 +311,19 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
 
   // buildEngine picks the recorded or the live-recognition implementation. Both
   // expose the same interface so the UI never branches on the provider again.
+  function discardEngine() {
+    engine?.discard();
+    // Live discard removes its event subscription. Never reuse that instance
+    // when the popup reopens or the user starts another recording.
+    engine = null;
+    engineProvider = null;
+  }
+
   function buildEngine() {
     const provider = speechSettings().provider;
     const engineKey = `${provider}:${speechSettings().endpointType}`;
     if (engine && engineProvider === engineKey) return engine;
-    engine?.discard();
+    discardEngine();
     const options = {
       getSettings: speechSettings,
       getBase: editor.speechBase,
@@ -330,7 +341,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
         // Chromium embedders such as WebView2 usually ship no speech backend,
         // so browser recognition fails at the network step. Point at the
         // recorded services rather than repeating the raw error code.
-        if (state.error && provider === "browser" && /network|service-not-allowed|not-allowed/.test(state.error)) {
+        if (state.error && provider === "browser" && /network|service-not-allowed/.test(state.error)) {
           configurationError = true;
           state = {
             ...state,
@@ -373,9 +384,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       ? state.backgroundTranscribing
         ? t("認識中 (録音は継続しています)")
         : (state.silenceHint || t("Ctrl+Space または ● で停止して認識"))
-      : state.status === "starting"
-        ? t("Escape で中止")
-        : t("Escape で中止 (録音は保持されます)");
+      : t("Escape で閉じる");
     recordButton.textContent = state.status === "recording" ? t("■ 停止") : active ? t("■ 中止") : t("● 録音");
     retryButton.hidden = state.retainedCount === 0 || active;
     if (!state.error) configurationError = false;
@@ -470,7 +479,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       return;
     }
     if (text) addHistory(text);
-    engine?.discard();
+    discardEngine();
     editor.reset();
     setStatus(t("コピーしました。"), true);
     await hidePopupWindow();
@@ -484,7 +493,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
 
   function closeWithoutCopy() {
     // Keep the text until the next opening archives it and starts a fresh entry.
-    engine?.discard();
+    discardEngine();
     void hidePopupWindow();
   }
 
@@ -973,9 +982,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       // or endpoints must leave the retained recording available.
       const nextEngineKey = `${speechSettings().provider}:${speechSettings().endpointType}`;
       if (engine && engineProvider !== nextEngineKey) {
-        engine.discard();
-        engine = null;
-        engineProvider = null;
+        discardEngine();
       }
       renderSpeechProvider();
       await loadAppInfo();
@@ -1102,12 +1109,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     if (editor.handleKeydown(e)) return;
     if (e.key === "Escape" || (e.ctrlKey && e.key === "[")) {
       e.preventDefault();
-      if (engine?.busy()) {
-        engine.stop();
-        setStatus(t("録音を中止しました。"), true);
-      } else {
-        closeWithoutCopy();
-      }
+      closeWithoutCopy();
       return;
     }
     if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -1128,7 +1130,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     }
     if (e.ctrlKey && !e.shiftKey && (e.key === "d" || e.key === "D")) {
       e.preventDefault();
-      engine?.discard();
+      discardEngine();
       setStatus(t("保持していた録音を破棄しました。"), true);
       return;
     }

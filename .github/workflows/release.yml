@@ -33,7 +33,7 @@ jobs:
           - os: macos-14
             target: darwin
             arch: arm64
-            artifact: speech-popup-darwin-arm64
+            artifact: speech-popup-darwin-arm64.zip
           - os: windows-latest
             target: windows
             arch: amd64
@@ -109,6 +109,8 @@ jobs:
             else
               echo "::notice::Store identity is not configured; uploading the EXE without MSIX."
             fi
+          elif [ "${{ matrix.target }}" = "darwin" ]; then
+            ditto -c -k --sequesterRsrc --keepParent bin/speech-popup.app bin/${{ matrix.artifact }}
           else
             cp bin/speech-popup bin/${{ matrix.artifact }}
           fi

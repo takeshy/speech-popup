@@ -1,6 +1,8 @@
 import { t } from "./i18n.js";
+import { speechErrorMessage as errorMessage } from "./speech_errors.js";
 import { createPCMCapture } from "./pcm_capture.js";
 import { speechDraft, validateSpeechSettings } from "./speech.js";
+import { watchSpeechSilence } from "./silence.js";
 
 export function liveSpeechSupported() {
   return !!navigator.mediaDevices?.getUserMedia &&
@@ -9,7 +11,7 @@ export function liveSpeechSupported() {
 
 const transportQueues = new WeakMap();
 
-export function createLiveRecognizer({ getSettings, getBase, getContext, getText, onInput, onSend, onState, liveTransport, capture = createPCMCapture }) {
+export function createLiveRecognizer({ getSettings, getBase, getContext, getText, onInput, onSend, onState, liveTransport, capture = createPCMCapture, watchSilence = watchSpeechSilence }) {
   let active = null;
   let ending = null;
   // Serialize connection changes: a cancelled dial must close before a new start.
@@ -27,22 +29,47 @@ export function createLiveRecognizer({ getSettings, getBase, getContext, getText
     if (active === current) active = null;
     ending = finish ? current : null;
     clearTimeout(current.finishTimer);
+    current.stopSilence?.();
     current.stream?.getTracks().forEach(track => track.stop());
-    if (!finish) publish({ status: "idle", meterStream: null });
+    if (!finish) {
+      publish({ status: "idle", meterStream: null });
+      // Reserve the stop in the connection queue before awaiting capture:
+      // reopening must not connect and then be stopped by this old session.
+      await connection(async () => {
+        try { await current.capture?.stop(); } catch {}
+        await liveTransport.stop();
+      }).catch(() => {});
+      return;
+    }
     try { await current.capture?.stop(); } catch {}
+    // Cancellation may have replaced this session while its audio drained.
+    if (ending !== current) return;
     // Audio has already streamed to the provider, but an entirely quiet input
     // needs neither finalization nor its timeout wait.
-    if (finish && current.capture?.heardVoice?.() === false) {
+    if (current.capture?.heardVoice?.() === false && !current.partial.trim()) {
       ending = null;
       await connection(() => liveTransport.stop()).catch(() => {});
       publish({ status: "idle", meterStream: null });
       return;
     }
     try {
-      if (finish && ending === current) await liveTransport.finish(current.id);
-      else if (!finish) await connection(() => liveTransport.stop()).catch(() => {});
+      await liveTransport.finish(current.id);
     } catch (caught) {
-      if (finish) publish({ error: t("ライブ書き起こしの終了に失敗しました: {0}", errorMessage(caught)) });
+      if (ending === current) publish({ error: t("ライブ書き起こしの終了に失敗しました: {0}", errorMessage(caught)) });
+    }
+  }
+
+  async function finishSession(current) {
+    if (active !== current) return;
+    current.ending = true;
+    publish({ status: "transcribing", meterStream: null });
+    await stopSession(current, true);
+    if (ending === current) {
+      current.finishTimer = setTimeout(() => {
+        void connection(() => liveTransport.stop());
+        ending = null;
+        publish({ status: "idle", meterStream: null });
+      }, 8000);
     }
   }
 
@@ -52,17 +79,7 @@ export function createLiveRecognizer({ getSettings, getBase, getContext, getText
       return;
     }
     if (active) {
-      const current = active;
-      current.ending = true;
-      publish({ status: "transcribing", meterStream: null });
-      await stopSession(current, true);
-      if (ending === current) {
-        current.finishTimer = setTimeout(() => {
-          void connection(() => liveTransport.stop());
-          ending = null;
-          publish({ status: "idle", meterStream: null });
-        }, 8000);
-      }
+      await finishSession(active);
       return;
     }
     publish({ error: "" });
@@ -71,7 +88,7 @@ export function createLiveRecognizer({ getSettings, getBase, getContext, getText
       return;
     }
     const settings = { ...getSettings() };
-    const current = { settings, stream: null, id: "", capture: null, committed: getBase(), partial: "", stopping: false, ending: false, finishTimer: null, openAIItems: new Map(), ignoredItems: new Set(), ignoreGemini: false };
+    const current = { settings, stream: null, id: "", capture: null, committed: getBase(), partial: "", stopping: false, ending: false, finishTimer: null, openAIItems: new Map(), consumedOpenAIItems: new Map(), ignoreGemini: false };
     current.lastRendered = current.committed;
     current.lastContext = getContext?.();
     active = current;
@@ -94,11 +111,34 @@ export function createLiveRecognizer({ getSettings, getBase, getContext, getText
         return;
       }
       publish({ status: "recording", meterStream: stream });
+      if (settings.endpointType === "openai" && settings.sendPhrase?.trim()) watchForCommand(current);
     } catch (caught) {
       if (active !== current) return;
       const stopped = stopSession(current, false);
       publish({ error: t("ライブ書き起こしを開始できません: {0}", errorMessage(caught)) });
       await stopped;
+    }
+  }
+
+  function watchForCommand(current) {
+    // OpenAI finalizes this turn only after we commit the input buffer. A
+    // tentative trailing send phrase plus an actual pause requests that final;
+    // only the provider's confirmed transcript is allowed to copy and close.
+    current.stopSilence = watchSilence(current.stream, Math.max(0.5, current.settings.silenceSeconds || 1), () => {
+      if (active !== current) return;
+      current.silent = true;
+      finishCommand(current);
+      if (active === current) watchForCommand(current);
+    }, available => {
+      if (active === current) publish({ silenceHint: available ? "" : t("無音の検出は利用できません") });
+    }, () => { current.silent = false; });
+  }
+
+  function finishCommand(current) {
+    if (active !== current || !current.silent) return;
+    preserveEdits(current);
+    if (speechDraft("", current.partial, true, current.settings.sendPhrase).send) {
+      void finishSession(current);
     }
   }
 
@@ -109,7 +149,12 @@ export function createLiveRecognizer({ getSettings, getBase, getContext, getText
     current.committed = base;
     current.lastRendered = base;
     current.lastContext = context;
-    for (const id of current.openAIItems.keys()) current.ignoredItems.add(id);
+    // An OpenAI item can span the whole recording. Consume only the text
+    // already displayed, so later deltas from that same item still reach the
+    // editor without replaying or overwriting the user's corrections.
+    for (const [id, text] of current.openAIItems) {
+      current.consumedOpenAIItems.set(id, (current.consumedOpenAIItems.get(id) ?? "") + text);
+    }
     current.openAIItems.clear();
     if (current.partial && current.settings.endpointType !== "openai") current.ignoreGemini = true;
     current.partial = "";
@@ -155,17 +200,24 @@ export function createLiveRecognizer({ getSettings, getBase, getContext, getText
       return;
     }
     if (target.settings.endpointType === "openai") {
-      if (target.ignoredItems.has(event.itemId)) {
-        if (event.kind === "final") target.ignoredItems.delete(event.itemId);
-        return;
-      }
       if (event.kind === "delta") {
         target.openAIItems.set(event.itemId, (target.openAIItems.get(event.itemId) ?? "") + event.text);
         target.partial = [...target.openAIItems.values()].join("");
         renderPartial(target);
+        finishCommand(target);
       } else if (event.kind === "final") {
+        const pending = target.openAIItems.get(event.itemId) ?? "";
         target.openAIItems.delete(event.itemId);
-        commit(target, event.text, [...target.openAIItems.values()].join(""));
+        let text = event.text;
+        if (target.consumedOpenAIItems.has(event.itemId)) {
+          const consumed = target.consumedOpenAIItems.get(event.itemId);
+          target.consumedOpenAIItems.delete(event.itemId);
+          // A final revision alone must not undo an edit or execute an old
+          // send command. If speech continued, finalize only the new suffix.
+          if (!pending) return;
+          text = text.startsWith(consumed) ? text.slice(consumed.length) : pending;
+        }
+        commit(target, text, [...target.openAIItems.values()].join(""));
       }
     } else if (target.ignoreGemini) {
       if (event.kind === "final") target.ignoreGemini = false;
@@ -192,13 +244,4 @@ export function createLiveRecognizer({ getSettings, getBase, getContext, getText
   const discard = async () => { unsubscribe?.(); await cancel(); };
   return { toggle, retry: () => {}, stop: cancel, discard,
     state: () => ({ ...state }), recording: () => state.status === "recording", busy: () => state.status !== "idle" };
-}
-
-function errorMessage(caught) {
-  if (caught instanceof Error) {
-    if (caught.name === "NotAllowedError") return t("マイクの使用が許可されていません。");
-    if (caught.name === "NotFoundError") return t("マイクが見つかりません。");
-    return caught.message || caught.name;
-  }
-  return String(caught);
 }

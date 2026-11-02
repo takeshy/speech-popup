@@ -7,7 +7,8 @@ tasks:
   build:
     deps: [common:tidy, common:frontend]
     cmds:
-      - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" -o {{.BIN_DIR}}/{{.APP_NAME}}
+      - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -extldflags=-mmacosx-version-min=12.0" -o {{.BIN_DIR}}/{{.APP_NAME}}
+      - python3 build/darwin/package.py {{.BIN_DIR}}/{{.APP_NAME}}
     env:
       GOOS: darwin
       GOARCH: '{{.ARCH | default ARCH}}'
@@ -18,4 +19,4 @@ tasks:
       - task: build
   run:
     cmds:
-      - '{{.BIN_DIR}}/{{.APP_NAME}}'
+      - open '{{.BIN_DIR}}/{{.APP_NAME}}.app'
