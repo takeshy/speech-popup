@@ -102,7 +102,9 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     t("Ctrl+B / Ctrl+F       1文字左 / 右"),
     t("Ctrl+K / Ctrl+U       行末まで削除 / 行頭まで削除"),
     t("Ctrl+O                全選択"),
-    t("Ctrl+C / X / V        コピー / 切り取り / 貼り付け"),
+    appInfo?.os === "darwin"
+      ? t("Cmd+C / X / V         コピー / 切り取り / 貼り付け")
+      : t("Ctrl+C / X / V        コピー / 切り取り / 貼り付け"),
     t("Ctrl+Z                元に戻す (Ctrl+Shift+Z / Ctrl+Y でやり直す)"),
     t("Ctrl+↑ / Ctrl+↓       テキスト履歴を移動 (最大 30 件。Ctrl+↓ で下書きに戻る)"),
     "",
@@ -630,11 +632,22 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     cfgFields.clipboardBackend.value = view.clipboard.backend;
     cfgFields.autoPaste.checked = view.clipboard.autoPaste;
     cfgFields.autoPasteDelay.value = String(view.clipboard.autoPasteDelayMs);
-    cfgFields.pasteKey.value = view.clipboard.pasteKey;
+    renderPasteKeys(view.clipboard.pasteKey);
     cfgFields.hotkeyEnabled.checked = view.hotkey.enabled;
     cfgFields.hotkeyAccelerator.value = view.hotkey.accelerator;
     updateSpeechFieldVisibility();
     updateHotkeyGuidance();
+  }
+
+  function renderPasteKeys(selected = cfgFields.pasteKey.value) {
+    cfgFields.pasteKey.replaceChildren(...(appInfo?.os === "darwin" ? [
+      new Option("Cmd+V", "ctrl+v"),
+      new Option("Cmd+Shift+V", "ctrl+shift+v")
+    ] : [
+      new Option(t("Ctrl+Shift+V (ターミナル向け)"), "ctrl+shift+v"),
+      new Option("Ctrl+V", "ctrl+v")
+    ]));
+    cfgFields.pasteKey.value = selected;
   }
 
   function readSpeechLanguage() {
@@ -955,6 +968,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     localizeDOM(document);
     await appBinding()?.SetUILanguage?.(getLanguage());
     helpBodyEl.textContent = helpText();
+    renderPasteKeys();
     if (lastEngineState) renderEngineState(lastEngineState);
     renderSpeechProvider();
     renderSendPhraseHint();

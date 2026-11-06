@@ -28,7 +28,7 @@ async function until(predicate, detail = "") {
   assert.fail(`UI did not reach the expected state${detail ? `: ${detail}` : ""}`);
 }
 
-async function setup(t, { history = [], copyFails = false, vertexClient = null, speech = {}, respond = null, recordingStep = 3000 } = {}) {
+async function setup(t, { os = "linux", history = [], copyFails = false, vertexClient = null, speech = {}, respond = null, recordingStep = 3000 } = {}) {
   let microphoneRequests = 0;
   let recordingTime = 0;
   const browserRecognitions = [];
@@ -172,7 +172,7 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
     SaveConfig: async (view) => { config = structuredClone(view); return {}; },
     LoadHistory: async () => savedHistory,
     SaveHistory: async (data) => { savedHistory = data; },
-    GetAppInfo: async () => ({ os: "linux", version: "test" }),
+    GetAppInfo: async () => ({ os, version: "test" }),
     NotifyReady: async () => ready(),
     SetOverlayOpen: async () => {},
     SelectVertexOAuthClient: async () => vertexClient,
@@ -235,6 +235,27 @@ async function setup(t, { history = [], copyFails = false, vertexClient = null, 
     liveSession: () => liveSession, history: () => JSON.parse(savedHistory),
     config: () => structuredClone(config), hides: () => hides, microphoneRequests: () => microphoneRequests };
 }
+
+test("paste settings and clipboard help show the platform modifier", async (t) => {
+  for (const os of ["darwin", "linux", "windows"]) {
+    await t.test(os, async (t) => {
+      const ui = await setup(t, { os });
+      const pasteKey = ui.element("cfg-paste-key");
+      const labels = Array.from(pasteKey.options, option => option.textContent);
+      assert.deepEqual(labels, os === "darwin"
+        ? ["Cmd+V", "Cmd+Shift+V"] : ["Ctrl+Shift+V (ターミナル向け)", "Ctrl+V"]);
+      assert.equal(pasteKey.value, "ctrl+v");
+      ui.element("menu-help").fire("click");
+      assert.ok(ui.element("help-body").textContent.includes(os === "darwin" ? "Cmd+C / X / V" : "Ctrl+C / X / V"));
+      ui.element("help-close").fire("click");
+      ui.element("menu-settings").fire("click");
+      await until(() => ui.element("cfg-speech-provider").focused);
+      pasteKey.value = "ctrl+shift+v";
+      ui.element("settings-form").fire("submit");
+      await until(() => ui.config().clipboard.pasteKey === "ctrl+shift+v");
+    });
+  }
+});
 
 test("browser permission errors are not described as a missing recognition backend", async (t) => {
   const ui = await setup(t, { speech: { provider: "browser", autoStart: true } });

@@ -115,7 +115,7 @@ func Default() *Config {
 			Backend:          defaultClipboardBackend(),
 			AutoPaste:        true,
 			AutoPasteDelayMs: 80,
-			PasteKey:         "ctrl+shift+v",
+			PasteKey:         defaultPasteKey(),
 		},
 		Hotkey: HotkeyConfig{
 			Enabled: runtime.GOOS == "windows",
@@ -140,6 +140,14 @@ func Default() *Config {
 			AutoStart:      true,
 		},
 	}
+}
+
+func defaultPasteKey() string {
+	if runtime.GOOS == "darwin" {
+		// "ctrl" maps to Command on macOS. Ordinary paste is Cmd+V.
+		return "ctrl+v"
+	}
+	return "ctrl+shift+v"
 }
 
 func defaultClipboardBackend() string {
@@ -447,6 +455,7 @@ func Marshal(c *Config) string {
 	b.WriteString("# 自動貼り付け時、フォーカス復帰から送出までの待ち時間 (ミリ秒)\n")
 	fmt.Fprintf(&b, "auto_paste_delay_ms = %d\n", c.Clipboard.AutoPasteDelayMs)
 	b.WriteString("# \"ctrl+v\" | \"ctrl+shift+v\"\n")
+	b.WriteString("# macOS: ctrl は Cmd。通常の貼り付けは ctrl+v (Cmd+V)\n")
 	fmt.Fprintf(&b, "paste_key = %s\n", quote(c.Clipboard.PasteKey))
 	b.WriteString("\n[hotkey]\n")
 	b.WriteString("# Windows のみ有効。アプリ内でグローバルホットキーを登録する\n")

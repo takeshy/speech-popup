@@ -40,6 +40,7 @@ export const messages = {
   "Ctrl+K / Ctrl+U       行末まで削除 / 行頭まで削除": "Ctrl+K / Ctrl+U        Delete to end / start of line",
   "Ctrl+O                全選択": "Ctrl+O                 Select all",
   "Ctrl+C / X / V        コピー / 切り取り / 貼り付け": "Ctrl+C / X / V         Copy / cut / paste",
+  "Cmd+C / X / V         コピー / 切り取り / 貼り付け": "Cmd+C / X / V          Copy / cut / paste",
   "Ctrl+Z                元に戻す (Ctrl+Shift+Z / Ctrl+Y でやり直す)": "Ctrl+Z                 Undo (Ctrl+Shift+Z / Ctrl+Y to redo)",
   "Ctrl+↑ / Ctrl+↓       テキスト履歴を移動 (最大 30 件。Ctrl+↓ で下書きに戻る)": "Ctrl+↑ / Ctrl+↓        Browse text history (30 entries; Ctrl+↓ returns to the draft)",
   "── その他 ──": "── Other ──",

@@ -52,7 +52,7 @@ Recording-based services receive 16 kHz mono WAV audio through the Go backend, a
 
 - **Windows 10/11:** microphone and Microsoft Edge WebView2 Runtime. In-app global hotkeys are supported.
 - **Linux/Wayland:** WebKit2GTK 4.1, `wl-copy`, a microphone, and optionally `wtype` for automatic paste. Hyprland is the primary supported compositor.
-- **macOS:** microphone permission; focus restoration and paste use `osascript` and require the corresponding Accessibility/Automation permissions.
+- **macOS:** microphone permission; automatic paste uses `osascript` and requires Accessibility/Automation permissions. Focus restoration uses AppKit.
 
 The Windows version is available from the [Microsoft Store](https://apps.microsoft.com/detail/9NVCCG9K20FV).
 
@@ -79,7 +79,7 @@ The header displays the current transcription service. The tray menu provides Se
 | Ctrl+B / Ctrl+F | Move left / right |
 | Ctrl+K / Ctrl+U | Delete to end / start of line |
 | Ctrl+O | Select all |
-| Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste |
+| Ctrl+C / Ctrl+X / Ctrl+V (macOS: Cmd+C / Cmd+X / Cmd+V) | Copy / cut / paste |
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z / Ctrl+Y | Redo |
 | Ctrl+↑ / Ctrl+↓ | Browse history / return to draft |
@@ -124,7 +124,9 @@ For an app installed in `~/Applications`, create a shortcut in Shortcuts.app wit
 "$HOME/Applications/speech-popup.app/Contents/MacOS/speech-popup" show
 ```
 
-Allow **Microphone** access on first use and **Speech Recognition** access when requested for browser recognition. Browser recognition waits for microphone permission before starting. Review denied permissions in **System Settings → Privacy & Security**. Automatic paste and focus restoration also need the Accessibility/Automation permissions used by `osascript`.
+Allow **Microphone** access on first use and **Speech Recognition** access when requested for browser recognition. Browser recognition waits for microphone permission before starting. Review denied permissions in **System Settings → Privacy & Security**. Automatic paste also needs the Accessibility/Automation permissions used by `osascript`. Focus restoration uses AppKit without Automation permission.
+
+On macOS, automatic paste defaults to **Cmd+V** (`paste_key = "ctrl+v"`; `ctrl` maps to Command). For an existing configuration, choose **Cmd+V** in Settings → Clipboard / paste → Paste shortcut and save.
 
 If **Ctrl+Space** does not start or stop recording, check **System Settings → Keyboard → Keyboard Shortcuts → Input Sources**. Disable **Select the previous input source** if it uses Ctrl+Space. **Ctrl+Option+Space** can remain assigned to the next input source. This changes the current user's settings and does not require administrator privileges.
 

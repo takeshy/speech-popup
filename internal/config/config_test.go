@@ -16,6 +16,22 @@ func TestLoadFromMissingFileReturnsDefaults(t *testing.T) {
 	}
 }
 
+func TestMacPasteDefaultsAndSavedShortcut(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS paste shortcut")
+	}
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if got := LoadFrom(path).Clipboard.PasteKey; got != "ctrl+v" {
+		t.Fatalf("fresh macOS config paste key = %q, want ctrl+v (Cmd+V)", got)
+	}
+	if err := os.WriteFile(path, []byte("[clipboard]\npaste_key = \"ctrl+shift+v\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := LoadFrom(path).Clipboard.PasteKey; got != "ctrl+shift+v" {
+		t.Fatalf("saved paste key = %q, want explicit shortcut preserved", got)
+	}
+}
+
 func TestLoadFromParsesSpeechSection(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	content := `

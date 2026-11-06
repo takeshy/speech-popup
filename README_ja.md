@@ -54,7 +54,7 @@ HTTP リクエストは WebView からではなく Go 側のプロキシ (`Speec
 |---|---|
 | Linux + Wayland (Hyprland 推奨) | `wl-clipboard` (`wl-copy`)、WebKit2GTK 4.1、任意で `wtype` (自動貼り付け時)、マイク (PipeWire/PulseAudio) |
 | Windows 10 以降 | 追加要件なし (ホットキーはアプリ内登録) |
-| macOS | **マイク**権限と、`osascript` が使う **Accessibility / Automation** 権限 |
+| macOS | **マイク**権限と、自動貼り付けの `osascript` が使う **Accessibility / Automation** 権限 |
 
 Windows版は [Microsoft Storeからインストール](https://apps.microsoft.com/detail/9NVCCG9K20FV?hl=ja-jp&gl=JP&ocid=pdpshare) できます。
 
@@ -162,7 +162,7 @@ Microsoft Store 版はパッケージ内の EXE をパス指定で起動でき�
 
 先にアプリを起動して常駐させてください。起動直後は入力窓を表示せず、メニューバーのマイクアイコンからも開けます。
 
-初回は**マイク**、ブラウザ認識では必要に応じて**音声認識**の使用を許可してください。ブラウザ認識も、マイクの許可取得を待ってから開始します。許可を拒否した場合は「システム設定 → プライバシーとセキュリティ」で確認してください。自動貼り付け・フォーカス復帰には `osascript` が使う **Accessibility / Automation** 権限も必要です。設定の `paste_key` の `ctrl` は **Cmd** として扱われます。
+初回は**マイク**、ブラウザ認識では必要に応じて**音声認識**の使用を許可してください。ブラウザ認識も、マイクの許可取得を待ってから開始します。許可を拒否した場合は「システム設定 → プライバシーとセキュリティ」で確認してください。自動貼り付けには `osascript` が使う **Accessibility / Automation** 権限も必要です。フォーカス復帰はAppKitを使い、Automation権限は不要です。設定の `paste_key` の `ctrl` は **Cmd** として扱われます。Macでの自動貼り付けの初期値は **Cmd+V** (`paste_key = "ctrl+v"`) です。既存の設定では「設定 → クリップボード / 貼り付け → 貼り付けキー」で **Cmd+V** を選んで保存してください。入力欄でのコピー・切り取り・貼り付けも **Cmd+C / Cmd+X / Cmd+V** です。
 
 **Ctrl+Space で録音の開始・停止ができない場合**は、「システム設定 → キーボード → キーボードショートカット → 入力ソース」で「前の入力ソースを選択」が同じキーを使っていないか確認してください。競合する場合はそのチェックを外すと録音に使えます。「入力メニューの次のソースを選択」の **Ctrl+Option+Space** は残せます。これは現在のユーザーの設定で、管理者権限は不要です。
 
