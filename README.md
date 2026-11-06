@@ -116,7 +116,20 @@ Check the actual class with `hyprctl clients`. Settings can generate a bind line
 
 ### macOS
 
-On macOS, launch the `speech-popup.app` bundle, which declares microphone usage; the bare executable may not expose WebKit's recording APIs. The macOS build creates `bin/speech-popup.app`; launch it with `open bin/speech-popup.app`. A shortcut can call `~/Applications/speech-popup.app/Contents/MacOS/speech-popup show` directly if the executable is not on your PATH.
+The macOS release requires **Apple Silicon (arm64) and macOS 12 or later**. An Intel Mac binary is not included in the release.
+
+1. Download **`speech-popup-darwin-arm64.zip`** from the [latest release](https://github.com/takeshy/speech-popup/releases/latest). Go, Node.js and Xcode are not needed to use the release app.
+2. Double-click the ZIP in Finder to extract **`speech-popup.app`**.
+3. In Finder, choose **Go → Go to Folder**, enter `~/Applications`, and move the app there. Create this folder in your home folder if it does not exist. When updating, quit speech-popup from its menu-bar menu first, then replace the existing app.
+4. Open the installed app:
+
+   ```sh
+   open "$HOME/Applications/speech-popup.app"
+   ```
+
+The release app is **ad-hoc signed, without Developer ID signing or Apple notarization**. If macOS blocks the first launch because the developer cannot be verified, open **System Settings → Privacy & Security → Open Anyway** after attempting to open it, then confirm **Open**. On macOS 12, use **System Preferences → Security & Privacy → General → Open Anyway**. See [Apple's instructions for opening an unnotarized app](https://support.apple.com/en-us/102445).
+
+The app stays in the menu bar with a microphone icon; no input window appears at startup. Choose **Open speech input** from that menu to check it. Launch the `.app` bundle, which declares microphone usage; the bare executable may not expose WebKit's recording APIs. For a source build, the bundle is `bin/speech-popup.app`.
 
 For an app installed in `~/Applications`, create a shortcut in Shortcuts.app with **Run Shell Script**, enter the following command, and assign **Ctrl+8** in its details. Start the app first so it is resident. Its popup is initially hidden; the menu-bar microphone icon also opens it.
 

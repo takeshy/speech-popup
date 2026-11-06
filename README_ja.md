@@ -152,7 +152,20 @@ Microsoft Store 版はパッケージ内の EXE をパス指定で起動でき�
 
 ### macOS
 
-マイクの用途を宣言した `speech-popup.app` を起動してください。実行ファイル単体では WebView の録音 API が利用できない場合があります。自前ビルドでは `bin/speech-popup.app` が生成され、`open bin/speech-popup.app` で起動できます。
+Release 版は **Apple Silicon (arm64)・macOS 12 以降**が対象です。Intel Mac 用のバイナリは配布していません。
+
+1. [最新の Release](https://github.com/takeshy/speech-popup/releases/latest) から **`speech-popup-darwin-arm64.zip`** をダウンロードします。配布版の利用に Go・Node.js・Xcode は不要です。
+2. Finder で ZIP をダブルクリックし、**`speech-popup.app`** を展開します。
+3. Finder の「移動 → フォルダへ移動」で `~/Applications` を開き、アプリを移動します。フォルダがなければホームフォルダ内に `Applications` を作成してください。更新時は、メニューバーから speech-popup を先に終了し、既存のアプリを置き換えます。
+4. 配置したアプリを起動します。
+
+   ```sh
+   open "$HOME/Applications/speech-popup.app"
+   ```
+
+配布アプリは **ad-hoc 署名のみで、Developer ID 署名・Apple の公証は行っていません**。開発元を確認できないため初回起動がブロックされた場合は、一度起動を試したあと「システム設定 → プライバシーとセキュリティ → このまま開く」を選び、「開く」で確認してください。macOS 12 では「システム環境設定 → セキュリティとプライバシー → 一般 → このまま開く」です。[Apple の案内](https://support.apple.com/ja-jp/102445)も参照してください。
+
+起動するとメニューバーにマイクアイコンが表示され、入力窓はまだ開きません。そのメニューの「音声入力を開く」で動作を確認できます。マイクの用途を宣言した `.app` を起動してください。実行ファイル単体では WebView の録音 API が利用できない場合があります。自前ビルドの場合は `bin/speech-popup.app` が生成されます。
 
 呼び出しキーは OS 側で設定します。[Shortcuts.app](https://support.apple.com/guide/shortcuts-mac/intro-to-shortcuts-apdfebc4f80a/mac) で「シェルスクリプトを実行」に次を指定し、詳細で **Ctrl+8** を割り当ててください。これは `speech-popup.app` を `~/Applications` に配置した例です。skhd / Raycast / Hammerspoon から同じコマンドを呼ぶこともできます。
 
