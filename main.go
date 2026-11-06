@@ -124,6 +124,10 @@ func runDaemon() {
 		Name:        "speech-popup",
 		Description: "Speech input popup window",
 		Icon:        appIcon,
+		Mac: application.MacOptions{
+			// Keep the resident app out of the Dock while allowing popup focus.
+			ActivationPolicy: application.ActivationPolicyAccessory,
+		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
