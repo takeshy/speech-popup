@@ -104,6 +104,9 @@
         <div class="field-row" id="row-model">
           <label class="wide">Model <input id="cfg-speech-model" type="text" placeholder="whisper-1" spellcheck="false"></label>
         </div>
+        <div class="field-row" id="row-gemini-live" hidden>
+          <span class="settings-note">Gemini Live は Gemini API Key を使って録音中に書き起こします (gemini-3.5-transcribe-live)。</span>
+        </div>
         <div class="field-row" id="row-vertex">
           <span id="vertex-status" class="settings-note"></span>
           <p class="settings-note">Google Cloud のデスクトップアプリ用 OAuth クライアント JSON を選び、ブラウザで認可してください。サービスアカウントの JSON ではありません。プロジェクト ID は JSON から取得します。接続後に設定を保存してください。</p>
@@ -118,6 +121,12 @@
           <label>発話を区切る無音 (秒) <input id="cfg-speech-silence" type="number" min="0" max="10" step="1"></label>
           <label class="check"><input id="cfg-speech-auto-start" type="checkbox"> ポップアップを開いたら自動で録音を開始する</label>
         </div>
+        <div class="field-row" id="row-microphone" hidden>
+          <label>マイク <select id="cfg-speech-microphone"></select></label>
+          <button id="check-microphone" type="button">マイクの接続を確認</button>
+          <span id="microphone-status" class="settings-note" role="status"></span>
+        </div>
+        <p id="browser-microphone-note" class="settings-note" hidden>ブラウザ音声認識はシステムの既定の入力を使用します。</p>
         <h3>音声コマンド</h3>
         <div class="field-row">
           <label class="wide">? にするフレーズ (カンマ区切り) <input id="cfg-question-phrases" type="text" spellcheck="false"></label>

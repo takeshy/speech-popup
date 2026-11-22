@@ -5,11 +5,13 @@ import vm from "node:vm";
 import { createRecorder, speechSupported } from "../frontend/src/recorder.js";
 import { createLiveRecognizer } from "../frontend/src/live_recognizer.js";
 import { createBrowserRecognizer } from "../frontend/src/browser_speech.js";
+import { microphoneConstraints } from "../frontend/src/microphone.js";
+import { speechErrorMessage } from "../frontend/src/speech_errors.js";
 import { createTextEditor } from "../frontend/src/editor.js";
 import { createAutoSizer } from "../frontend/src/autosize.js";
 import { defaultSpeechCommands, speechCommandsFor, splitCommandPhrases } from "../frontend/src/speech_commands.js";
 import { parseReplacementRules, serializeReplacementRules } from "../frontend/src/replacements.js";
-import { defaultSendPhrase, initialSendPhrase, sendPhraseLanguage } from "../frontend/src/send_phrases.js";
+import { defaultSendPhrase, initialSendPhrase, migrateSendPhrase, sendPhraseLanguage } from "../frontend/src/send_phrases.js";
 import { speechLanguageOptions } from "../frontend/src/speech_languages.js";
 import { t as translate, setLanguage, getLanguage } from "../frontend/src/i18n.js";
 setLanguage("ja");
@@ -28,8 +30,10 @@ async function until(predicate, detail = "") {
   assert.fail(`UI did not reach the expected state${detail ? `: ${detail}` : ""}`);
 }
 
-async function setup(t, { os = "linux", history = [], copyFails = false, vertexClient = null, speech = {}, respond = null, recordingStep = 3000 } = {}) {
+async function setup(t, { os = "linux", history = [], copyFails = false, vertexClient = null, speech = {}, respond = null, recordingStep = 3000, enumerateDevices } = {}) {
   let microphoneRequests = 0;
+  const audioConstraints = [];
+  let microphoneStops = 0;
   let recordingTime = 0;
   const browserRecognitions = [];
   const audioGlobals = {
@@ -39,9 +43,10 @@ async function setup(t, { os = "linux", history = [], copyFails = false, vertexC
       abort() {}
     },
     AudioContext: class {},
-    navigator: { mediaDevices: { getUserMedia: async () => {
+    navigator: { mediaDevices: { enumerateDevices, getUserMedia: async ({ audio }) => {
       microphoneRequests++;
-      return { getTracks: () => [{ stop() {} }] };
+      audioConstraints.push(audio);
+      return { getTracks: () => [{ stop() { microphoneStops++; } }] };
     } } },
     MediaRecorder: class {
       static isTypeSupported() { return true; }
@@ -215,7 +220,8 @@ async function setup(t, { os = "linux", history = [], copyFails = false, vertexC
         return () => { liveSilence = null; };
       } }),
     createBrowserRecognizer,
-    t: translate, getLanguage, setLanguage, speechLanguageOptions, defaultSendPhrase, initialSendPhrase, sendPhraseLanguage, defaultSpeechCommands, speechCommandsFor, splitCommandPhrases, parseReplacementRules, serializeReplacementRules,
+    navigator: audioGlobals.navigator, microphoneConstraints, speechErrorMessage,
+    t: translate, getLanguage, setLanguage, speechLanguageOptions, defaultSendPhrase, initialSendPhrase, migrateSendPhrase, sendPhraseLanguage, defaultSpeechCommands, speechCommandsFor, splitCommandPhrases, parseReplacementRules, serializeReplacementRules,
     Option: class { constructor(text, value) { this.textContent = text; this.value = value; } },
     localizeDOM() {},
     createAudioMeter: () => ({ attach: async () => true }),
@@ -230,7 +236,7 @@ async function setup(t, { os = "linux", history = [], copyFails = false, vertexC
   vm.runInContext(source, context);
   await booted;
   return { element, events, requests, vertexConnections, liveSessions,
-    browserRecognitions,
+    browserRecognitions, audioConstraints, microphoneStops: () => microphoneStops,
     liveFinishes, liveSilence: () => liveSilence?.(),
     liveSession: () => liveSession, history: () => JSON.parse(savedHistory),
     config: () => structuredClone(config), hides: () => hides, microphoneRequests: () => microphoneRequests };
@@ -257,6 +263,57 @@ test("paste settings and clipboard help show the platform modifier", async (t) =
   }
 });
 
+for (const provider of ["openai-compatible", "live"]) {
+  test(`a saved microphone is checked and used for ${provider} transcription`, async (t) => {
+    const ui = await setup(t, {
+      speech: { provider, microphoneId: "previous" },
+      enumerateDevices: async () => [
+        { kind: "audioinput", deviceId: "default", label: "Default" },
+        { kind: "audioinput", deviceId: "usb", label: "USB microphone" },
+        { kind: "audiooutput", deviceId: "speakers", label: "Speakers" }
+      ]
+    });
+    ui.events["popup:shown"]("settings");
+    const microphone = ui.element("cfg-speech-microphone");
+    await until(() => microphone.options.some(option => option.value === "usb"));
+    assert.deepEqual(Array.from(microphone.options, option => option.value), ["", "usb", "previous"]);
+    assert.equal(microphone.value, "previous");
+    assert.deepEqual(ui.audioConstraints, []);
+    microphone.value = "usb";
+    ui.element("check-microphone").fire("click");
+    await until(() => ui.element("microphone-status").textContent === "マイクに接続できました。");
+    assert.equal(ui.microphoneStops(), 1);
+    assert.equal(ui.requests.length, 0);
+    assert.equal(ui.liveSessions.length, 0);
+    ui.element("settings-form").fire("submit");
+    await until(() => ui.element("settings-overlay").dataset.open === "false");
+    assert.equal(ui.config().speech.microphoneId, "usb");
+    ui.events["popup:shown"]("");
+    await until(() => ui.element("mode").dataset.recording === "true");
+    assert.deepEqual(ui.audioConstraints, [{ deviceId: { exact: "usb" } }, { deviceId: { exact: "usb" } }]);
+  });
+}
+
+test("closing settings releases the microphone while the device list is loading", async (t) => {
+  let resolveDevices;
+  let calls = 0;
+  const ui = await setup(t, { enumerateDevices: () => {
+    if (++calls === 1) return Promise.resolve([]);
+    return new Promise(resolve => { resolveDevices = resolve; });
+  } });
+  ui.events["popup:shown"]("settings");
+  await until(() => ui.element("microphone-status").textContent.includes("一覧を更新"));
+  ui.element("check-microphone").fire("click");
+  await until(() => resolveDevices);
+  ui.element("settings-close").fire("click");
+  assert.deepEqual(ui.audioConstraints, [true]);
+  assert.equal(ui.microphoneStops(), 1);
+  resolveDevices([]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.microphoneStops(), 1);
+  assert.equal(ui.element("microphone-status").textContent, "");
+});
+
 test("browser permission errors are not described as a missing recognition backend", async (t) => {
   const ui = await setup(t, { speech: { provider: "browser", autoStart: true } });
   ui.events["popup:shown"]("");
@@ -268,7 +325,7 @@ test("browser permission errors are not described as a missing recognition backe
 });
 
 test("saying 以上 in OpenAI Live confirms, copies and closes without pressing Stop", async (t) => {
-  const ui = await setup(t, { speech: { provider: "live", autoStart: true, sendPhrase: "以上", silenceSeconds: 3 } });
+  const ui = await setup(t, { speech: { provider: "live", language: "ja", sendPhrase: "over, オーバー", silenceSeconds: 3 } });
   ui.events["popup:shown"]("");
   await until(() => ui.element("mode").dataset.recording === "true");
   const sessionId = ui.liveSession();
@@ -282,6 +339,22 @@ test("saying 以上 in OpenAI Live confirms, copies and closes without pressing 
   assert.equal(ui.history()[0], "入力した文章。");
   ui.events["popup:shown"]("");
   await until(() => ui.liveSessions.length === 2 && ui.element("mode").dataset.recording === "true");
+});
+
+test("Gemini Live copies and closes on the Japanese default after upgrading", async (t) => {
+  const ui = await setup(t, { speech: {
+    provider: "live", endpointType: "gemini-transcribe", language: "ja-JP",
+    sendPhraseProfiles: { ja: "これで終わります" }
+  } });
+  ui.events["popup:shown"]("");
+  await until(() => ui.element("mode").dataset.recording === "true");
+  const sessionId = ui.liveSession();
+  ui.events["speech:live"]({ sessionId, kind: "final", text: "入力した文章。" });
+  ui.events["speech:live"]({ sessionId, kind: "interim", text: "以上。" });
+  assert.equal(ui.hides(), 0);
+  ui.events["speech:live"]({ sessionId, kind: "final", text: "以上。" });
+  await until(() => ui.hides() === 1);
+  assert.equal(ui.history()[0], "入力した文章。");
 });
 
 for (const endpointType of ["openai", "gemini-transcribe"]) {
@@ -590,13 +663,17 @@ test("speech dropdown changes service codes and preserves existing regional tags
 });
 
 test("send phrases follow language changes, remember edits and disabling, and reset", async (t) => {
-  const ui = await setup(t, { speech: { language: "en", sendPhrase: "over, オーバー" } });
+  const ui = await setup(t, { speech: {
+    language: "en", sendPhrase: "over, オーバー", sendPhraseProfiles: { ja: "これで終わります" }
+  } });
   const phrase = ui.element("cfg-speech-send-phrase");
   const language = ui.element("cfg-speech-language");
   const choose = (code) => { language.value = code; language.fire("change"); };
   assert.equal(phrase.value, "over");
   assert.equal(ui.element("send-phrase-hint").textContent, "終了するには「over」と話してください");
   assert.equal(ui.element("send-phrase-hint").hidden, false);
+  choose("ja");
+  assert.equal(phrase.value, "以上");
   choose("fr");
   assert.equal(phrase.value, "");
   phrase.value = "envoyer maintenant";
@@ -663,7 +740,7 @@ test("recorded speech replaces selected text and keeps the remaining text", asyn
 test("a send phrase with no preceding text closes without copying", async (t) => {
   const ui = await setup(t, {
     speech: { apiKey: "corrected", language: "ja", sendPhrase: "これで終わります" },
-    respond: () => ({ status: 200, body: '{"text":"これで終わります"}' })
+    respond: () => ({ status: 200, body: '{"text":"以上。"}' })
   });
   ui.element("record").fire("click");
   await until(() => ui.element("mode").dataset.recording === "true");

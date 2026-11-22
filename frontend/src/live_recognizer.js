@@ -3,6 +3,7 @@ import { speechErrorMessage as errorMessage } from "./speech_errors.js";
 import { createPCMCapture } from "./pcm_capture.js";
 import { speechDraft, validateSpeechSettings } from "./speech.js";
 import { watchSpeechSilence } from "./silence.js";
+import { microphoneConstraints } from "./microphone.js";
 
 export function liveSpeechSupported() {
   return !!navigator.mediaDevices?.getUserMedia &&
@@ -95,7 +96,7 @@ export function createLiveRecognizer({ getSettings, getBase, getContext, getText
     try {
       validateSpeechSettings(settings);
       publish({ status: "starting" });
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia(microphoneConstraints(settings.microphoneId));
       if (active !== current) {
         stream.getTracks().forEach(track => track.stop());
         return;
@@ -115,7 +116,7 @@ export function createLiveRecognizer({ getSettings, getBase, getContext, getText
     } catch (caught) {
       if (active !== current) return;
       const stopped = stopSession(current, false);
-      publish({ error: t("ライブ書き起こしを開始できません: {0}", errorMessage(caught)) });
+      publish({ error: t("ライブ書き起こしを開始できません: {0}", errorMessage(caught, settings.microphoneId)) });
       await stopped;
     }
   }

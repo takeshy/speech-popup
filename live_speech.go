@@ -169,9 +169,11 @@ func liveSpeechSetup(speech config.SpeechConfig) any {
 		model = fmt.Sprintf("projects/%s/locations/global/publishers/google/models/gemini-3.5-transcribe-live-preview", speech.VertexProjectID)
 	}
 	return map[string]any{"setup": map[string]any{
-		"model":                   model,
-		"generationConfig":        map[string]any{"responseModalities": []string{"TEXT"}},
-		"inputAudioTranscription": map[string]any{"languageCodes": languages, "mode": "SMART"},
+		"model":            model,
+		"generationConfig": map[string]any{"responseModalities": []string{"TEXT"}},
+		// VERBATIM returns one final per speech segment. SMART returns the
+		// entire session transcript, which an append-only editor would replay.
+		"inputAudioTranscription": map[string]any{"languageCodes": languages, "mode": "VERBATIM"},
 	}}
 }
 

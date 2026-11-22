@@ -65,6 +65,13 @@ test("speechDraft appends with a separating space", () => {
   assert.deepEqual(speechDraft("hello ", "world", true, "over"), { text: "hello world", send: false });
 });
 
+test("the Japanese send phrase 以上 must stand on its own at the end", () => {
+  assert.deepEqual(speechDraft("", "入力しました。以上。", true, "以上"), { text: "入力しました。", send: true });
+  for (const text of ["これ以上。", "18歳以上。", "10%以上。", "以上の通りです。"]) {
+    assert.deepEqual(speechDraft("", text, true, "以上"), { text, send: false });
+  }
+});
+
 test("speechDraft strips a trailing send phrase only when final", () => {
   assert.deepEqual(speechDraft("", "送ります オーバー", true, "over, オーバー"), {
     text: "送ります",

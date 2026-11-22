@@ -8,6 +8,7 @@ import { speechErrorMessage as errorMessage } from "./speech_errors.js";
 
 import { recordingsToWav, speechDraft, transcribeSpeech, validateSpeechSettings } from "./speech.js";
 import { watchSpeechSilence } from "./silence.js";
+import { microphoneConstraints } from "./microphone.js";
 
 const MAX_RECORDING_MS = 5 * 60 * 1000;
 const MAX_RECORDING_BYTES = 20 * 1024 * 1024;
@@ -217,7 +218,7 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
     publish({ status: "starting" });
     try {
       validateSpeechSettings(current.settings);
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia(microphoneConstraints(current.settings.microphoneId));
       if (active !== current) {
         stream.getTracks().forEach(track => track.stop());
         return;
@@ -237,7 +238,7 @@ export function createRecorder({ getSettings, getBase, getText, onInput, onSend,
     } catch (caught) {
       if (active === current) {
         stop();
-        publish({ error: t("録音を開始できません: {0}", errorMessage(caught)) });
+        publish({ error: t("録音を開始できません: {0}", errorMessage(caught, current.settings.microphoneId)) });
       }
     }
   }

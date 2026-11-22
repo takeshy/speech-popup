@@ -5,10 +5,11 @@ import { readFileSync } from "node:fs";
 import { speechDraft, convertSpokenSymbol } from "../frontend/src/speech.js";
 import { applyReplacementRules } from "../frontend/src/replacements.js";
 import { speechErrorMessage as errorMessage } from "../frontend/src/speech_errors.js";
+import { microphoneConstraints } from "../frontend/src/microphone.js";
 
 const load = (file, context, factory) => vm.runInNewContext(
   readFileSync(new URL(`../frontend/src/${file}.js`, import.meta.url), "utf8")
-    .replace(/^import .*;$/gm, "").replace(/export /g, "") + `\n${factory};`, { ...context, errorMessage });
+    .replace(/^import .*;$/gm, "").replace(/export /g, "") + `\n${factory};`, { ...context, errorMessage, microphoneConstraints });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 test("recorder converts question commands on manual stop or silence, including retries", async () => {

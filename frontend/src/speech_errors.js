@@ -1,8 +1,11 @@
 import { t } from "./i18n.js";
 
-export function speechErrorMessage(caught) {
+export function speechErrorMessage(caught, microphoneId) {
   // WebView media errors may be DOMExceptions or objects from another realm.
   // Inspect the name instead of relying on instanceof Error.
+  if (microphoneId && (caught?.name === "NotFoundError" || caught?.name === "OverconstrainedError")) {
+    return t("選択したマイクを使用できません。再接続するか、設定で別のマイクを選んでください。");
+  }
   switch (caught?.name) {
     case "NotAllowedError":
       return t("マイクの使用が許可されていません。");

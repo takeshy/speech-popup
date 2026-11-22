@@ -439,6 +439,14 @@ button.primary {
   flex: 1 1 auto;
 }
 
+#row-microphone label {
+  max-width: 100%;
+}
+
+#cfg-speech-microphone {
+  min-width: 0;
+}
+
 .field-row input[type="number"] {
   width: 84px;
 }

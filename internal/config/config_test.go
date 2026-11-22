@@ -99,6 +99,7 @@ func TestMarshalRoundTrips(t *testing.T) {
 	cfg.Speech.EndpointType = EndpointGemini
 	cfg.Speech.APIKey = `a\b"c`
 	cfg.Speech.Language = "ja-JP"
+	cfg.Speech.MicrophoneID = "usb-device-id"
 	cfg.UILanguage = "en"
 	cfg.Speech.AutoStart = false
 	cfg.Hotkey.Accelerator = "Ctrl+Alt+V"

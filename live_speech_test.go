@@ -41,6 +41,9 @@ func TestLiveSpeechSetup(t *testing.T) {
 	if geminiSetup["model"] != "models/gemini-3.5-transcribe-live" {
 		t.Fatalf("Gemini model = %v", geminiSetup["model"])
 	}
+	if mode := geminiSetup["inputAudioTranscription"].(map[string]any)["mode"]; mode != "VERBATIM" {
+		t.Fatalf("Gemini transcription mode = %v, want segment-based VERBATIM", mode)
+	}
 
 	vertex, err := json.Marshal(liveSpeechSetup(config.SpeechConfig{EndpointType: config.EndpointVertex, VertexProjectID: "project-1", Language: "ja"}))
 	if err != nil {
@@ -56,6 +59,9 @@ func TestLiveSpeechSetup(t *testing.T) {
 	vertexSetup := vertexValue["setup"].(map[string]any)
 	if vertexSetup["model"] != "projects/project-1/locations/global/publishers/google/models/gemini-3.5-transcribe-live-preview" {
 		t.Fatalf("Vertex model = %v", vertexSetup["model"])
+	}
+	if mode := vertexSetup["inputAudioTranscription"].(map[string]any)["mode"]; mode != "VERBATIM" {
+		t.Fatalf("Vertex transcription mode = %v, want segment-based VERBATIM", mode)
 	}
 }
 

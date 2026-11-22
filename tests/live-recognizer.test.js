@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { speechDraft, validateSpeechSettings } from "../frontend/src/speech.js";
 import { createTextEditor } from "../frontend/src/editor.js";
 import { speechErrorMessage as errorMessage } from "../frontend/src/speech_errors.js";
+import { microphoneConstraints } from "../frontend/src/microphone.js";
 
 const deferred = () => {
   let resolve;
@@ -23,7 +24,7 @@ function harness({ endpointType = "openai", microphone, start, capture, input, s
   const create = vm.runInNewContext(
     readFileSync(new URL("../frontend/src/live_recognizer.js", import.meta.url), "utf8")
       .replace(/^import .*;$/gm, "").replace(/export /g, "") + "\ncreateLiveRecognizer;", {
-      t: x => x, speechDraft, validateSpeechSettings, errorMessage,
+      t: x => x, speechDraft, validateSpeechSettings, errorMessage, microphoneConstraints,
       navigator: { mediaDevices: { getUserMedia: () => microphone ?? Promise.resolve(stream) } },
       AudioContext: class {},
       watchSpeechSilence: (_stream, _seconds, silence, _status, voice) => {
@@ -200,6 +201,24 @@ test("cancelled quiet finalization cannot stop a newly opened session", async ()
   assert.equal(h.calls.stops, 1, "only the cancelled session should be stopped");
   assert.equal(replacement.state().status, "recording");
   await replacement.stop();
+});
+
+test("Gemini replaces interim revisions and appends each finalized utterance once", async () => {
+  const h = harness({ endpointType: "gemini-transcribe" });
+  await h.engine.toggle();
+  h.event({ kind: "interim", text: "こんにちは" });
+  h.event({ kind: "final", text: "こんにちは。" });
+  h.event({ kind: "interim", text: "今日は" });
+  h.event({ kind: "interim", text: "今日はちょっと寒い" });
+  assert.equal(h.text(), "こんにちは。 今日はちょっと寒い");
+  h.event({ kind: "final", text: "今日はちょっと寒いかも。" });
+  h.event({ kind: "interim", text: "入力がおかしい" });
+  h.event({ kind: "final", text: "入力がおかしい。" });
+  assert.equal(h.text(), "こんにちは。 今日はちょっと寒いかも。 入力がおかしい。");
+  // A genuinely repeated utterance is still valid dictation.
+  h.event({ kind: "final", text: "入力がおかしい。" });
+  assert.equal(h.text(), "こんにちは。 今日はちょっと寒いかも。 入力がおかしい。 入力がおかしい。");
+  await h.engine.stop();
 });
 
 for (const endpointType of ["openai", "gemini-transcribe"]) {

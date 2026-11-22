@@ -4,12 +4,14 @@ import { t, getLanguage, setLanguage, localizeDOM } from "./i18n.js";
 
 import { defaultSpeechCommands, speechCommandsFor, splitCommandPhrases } from "./speech_commands.js";
 import { parseReplacementRules, serializeReplacementRules } from "./replacements.js";
-import { defaultSendPhrase, initialSendPhrase, sendPhraseLanguage } from "./send_phrases.js";
+import { defaultSendPhrase, initialSendPhrase, migrateSendPhrase, sendPhraseLanguage } from "./send_phrases.js";
 import { speechLanguageOptions } from "./speech_languages.js";
 import { createRecorder, speechSupported } from "./recorder.js";
 import { browserSpeechSupported, createBrowserRecognizer } from "./browser_speech.js";
 import { createLiveRecognizer } from "./live_recognizer.js";
 import { createAudioMeter } from "./meter.js";
+import { microphoneConstraints } from "./microphone.js";
+import { speechErrorMessage } from "./speech_errors.js";
 import { createTextEditor } from "./editor.js";
 import { createAutoSizer } from "./autosize.js";
 import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./speech.js";
@@ -53,11 +55,15 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   const vertexStatusEl = document.getElementById("vertex-status");
   const vertexConnectButton = document.getElementById("vertex-connect");
   const vertexDisconnectButton = document.getElementById("vertex-disconnect");
+  const checkMicrophoneButton = document.getElementById("check-microphone");
+  const microphoneStatusEl = document.getElementById("microphone-status");
   const rows = {
     endpoint: document.getElementById("row-endpoint"),
     baseUrl: document.getElementById("row-base-url"),
     apiKey: document.getElementById("row-api-key"),
     model: document.getElementById("row-model"),
+    microphone: document.getElementById("row-microphone"),
+    geminiLive: document.getElementById("row-gemini-live"),
     vertex: document.getElementById("row-vertex")
   };
   const cfgFields = {
@@ -66,6 +72,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     speechBaseUrl: document.getElementById("cfg-speech-base-url"),
     speechApiKey: document.getElementById("cfg-speech-api-key"),
     speechModel: document.getElementById("cfg-speech-model"),
+    microphone: document.getElementById("cfg-speech-microphone"),
     speechLanguage: document.getElementById("cfg-speech-language"),
     speechSilence: document.getElementById("cfg-speech-silence"),
     speechSendPhrase: document.getElementById("cfg-speech-send-phrase"),
@@ -302,6 +309,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       baseUrl: speech.baseUrl ?? "",
       apiKey: speech.apiKey ?? "",
       model: speech.model ?? "",
+      microphoneId: speech.microphoneId ?? "",
       language: speech.language ?? "auto",
       silenceSeconds: speech.silenceSeconds ?? 0,
       sendPhrase: initialSendPhrase(speech),
@@ -569,6 +577,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     setMenuOpen(false);
     helpOverlay.dataset.open = "false";
     settingsOverlay.dataset.open = "false";
+    resetMicrophoneCheck();
     setOverlayOpen(false);
   }
 
@@ -591,6 +600,75 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   let questionPhrases = {};
   let newlinePhrases = {};
   let formPhraseLanguage = "";
+  let microphoneRequest = null;
+
+  function renderMicrophones(selected, devices = []) {
+    const options = [new Option(t("システムの既定のマイク"), "")];
+    for (const { deviceId, label } of devices) {
+      options.push(new Option(label || t("マイク {0}", options.length), deviceId));
+    }
+    if (selected && !devices.some(device => device.deviceId === selected)) {
+      options.push(new Option(t("保存済みのマイク (一覧に表示されていません)"), selected));
+    }
+    cfgFields.microphone.replaceChildren(...options);
+    cfgFields.microphone.value = selected;
+  }
+
+  function releaseMicrophoneCheck(request) {
+    request?.stream?.getTracks().forEach(track => track.stop());
+    if (request) request.stream = null;
+  }
+
+  function resetMicrophoneCheck() {
+    releaseMicrophoneCheck(microphoneRequest);
+    microphoneRequest = null;
+    cfgFields.microphone.disabled = false;
+    checkMicrophoneButton.disabled = !globalThis.navigator?.mediaDevices?.getUserMedia;
+    microphoneStatusEl.textContent = "";
+  }
+
+  async function refreshMicrophones(check = false) {
+    releaseMicrophoneCheck(microphoneRequest);
+    const request = {};
+    microphoneRequest = request;
+    const mediaDevices = globalThis.navigator?.mediaDevices;
+    let result = "";
+    let devices = [];
+    if (check) {
+      checkMicrophoneButton.disabled = cfgFields.microphone.disabled = true;
+      microphoneStatusEl.textContent = t("マイクを確認しています…");
+    }
+    try {
+      if (check) {
+        try {
+          request.stream = await mediaDevices.getUserMedia(microphoneConstraints(cfgFields.microphone.value));
+          result = t("マイクに接続できました。");
+        } catch (caught) {
+          result = speechErrorMessage(caught, cfgFields.microphone.value);
+        }
+      }
+      if (microphoneRequest !== request) return;
+      try {
+        const available = await mediaDevices?.enumerateDevices?.() ?? [];
+        devices = available.filter(device =>
+          device.kind === "audioinput" && device.deviceId && device.deviceId !== "default");
+      } catch (caught) {
+        result ||= speechErrorMessage(caught);
+      }
+      if (microphoneRequest !== request) return;
+      renderMicrophones(cfgFields.microphone.value, devices);
+      microphoneStatusEl.textContent = result || (!mediaDevices?.getUserMedia
+        ? t("このウィンドウではマイクを使用できません。")
+        : devices.length ? "" : t("マイクの接続を確認して一覧を更新してください。"));
+    } finally {
+      releaseMicrophoneCheck(request);
+      if (microphoneRequest === request) {
+        microphoneRequest = null;
+        cfgFields.microphone.disabled = false;
+        checkMicrophoneButton.disabled = !mediaDevices?.getUserMedia;
+      }
+    }
+  }
 
   function rememberService() {
     if (!formEndpoint) return;
@@ -609,14 +687,15 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     formEndpoint = view.speech.endpointType;
     renderSpeechProvider();
     cfgFields.speechProvider.value = view.speech.provider;
+    renderMicrophones(view.speech.microphoneId ?? "");
     cfgFields.speechEndpoint.value = view.speech.endpointType;
     cfgFields.speechBaseUrl.value = view.speech.baseUrl;
     cfgFields.speechApiKey.value = view.speech.apiKey;
     cfgFields.speechModel.value = view.speech.model;
     renderSpeechLanguages(view.speech.language || "auto");
     cfgFields.speechSilence.value = String(view.speech.silenceSeconds);
-    sendPhraseProfiles = structuredClone(view.speech.sendPhraseProfiles ?? {});
-    if (sendPhraseProfiles.en === "I'm done speaking") sendPhraseProfiles.en = defaultSendPhrase("en");
+    sendPhraseProfiles = Object.fromEntries(Object.entries(view.speech.sendPhraseProfiles ?? {})
+      .map(([key, phrase]) => [key, migrateSendPhrase(key, phrase)]));
     exclamationPhrases = structuredClone(view.speech.exclamationPhrases ?? {});
     questionPhrases = structuredClone(view.speech.questionPhrases ?? {});
     newlinePhrases = structuredClone(view.speech.newlinePhrases ?? {});
@@ -776,6 +855,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       speech: {
         profiles: structuredClone(serviceProfiles),
         provider: cfgFields.speechProvider.value,
+        microphoneId: cfgFields.microphone.value,
         endpointType: cfgFields.speechEndpoint.value,
         baseUrl: cfgFields.speechBaseUrl.value.trim(),
         apiKey: cfgFields.speechApiKey.value.trim(),
@@ -814,6 +894,8 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   function updateSpeechFieldVisibility() {
     const browser = cfgFields.speechProvider.value === "browser";
     const live = cfgFields.speechProvider.value === "live";
+    rows.microphone.hidden = browser;
+    document.getElementById("browser-microphone-note").hidden = !browser;
     for (const option of cfgFields.speechEndpoint.options) {
       option.disabled = live && !["openai", "gemini-transcribe", "vertex-transcribe"].includes(option.value);
     }
@@ -833,6 +915,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     rows.apiKey.hidden = browser || endpointType === "whisper-cpp" || endpointType === "vertex-transcribe";
     rows.model.hidden = browser || live || google || endpointType === "whisper-cpp";
     rows.vertex.hidden = browser || endpointType !== "vertex-transcribe";
+    rows.geminiLive.hidden = !live || endpointType !== "gemini-transcribe";
     if (!rows.vertex.hidden) void refreshVertexStatus();
   }
 
@@ -946,18 +1029,22 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     settingsOverlay.dataset.open = "true";
     setOverlayOpen(true);
     engine?.stop();
+    resetMicrophoneCheck();
     try {
       config = await appBinding()?.LoadConfig();
     } catch (caught) {
       setSettingsStatus(message(caught), true);
     }
+    if (settingsOverlay.dataset.open !== "true") return;
     if (config) fillSettingsForm(config);
+    if (!rows.microphone.hidden) void refreshMicrophones();
     setSettingsStatus("");
     renderSettingsInfo();
     cfgFields.speechProvider.focus();
   }
 
   function closeSettings() {
+    resetMicrophoneCheck();
     settingsOverlay.dataset.open = "false";
     if (!overlayOpen()) setOverlayOpen(false);
     focusInput();
@@ -1063,7 +1150,13 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
     e.preventDefault();
     void saveSettings();
   });
-  cfgFields.speechProvider.addEventListener("change", updateSpeechFieldVisibility);
+  cfgFields.speechProvider.addEventListener("change", () => {
+    updateSpeechFieldVisibility();
+    resetMicrophoneCheck();
+    if (!rows.microphone.hidden) void refreshMicrophones();
+  });
+  cfgFields.microphone.addEventListener("change", () => { microphoneStatusEl.textContent = ""; });
+  checkMicrophoneButton.addEventListener("click", () => void refreshMicrophones(true));
   cfgFields.speechEndpoint.addEventListener("change", applyEndpointPreset);
   cfgFields.speechModel.addEventListener("change", () => renderSpeechLanguages());
   cfgFields.speechLanguage.addEventListener("change", () => {
@@ -1198,6 +1291,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
   globalThis.window?.runtime?.EventsOn?.("popup:hidden", () => {
     // Never hold the microphone open behind a hidden window.
     engine?.stop();
+    resetMicrophoneCheck();
   });
 
   void boot();

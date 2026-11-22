@@ -159,13 +159,14 @@ restore_focus = true
 
 [speech]
 provider = "browser" # or "live", or "openai-compatible" for recorded services
+microphone_id = "" # empty uses the system default
 endpoint_type = "openai"
 base_url = "https://api.openai.com/v1"
 api_key = "" # stored in plain text
 model = "whisper-1"
 language = "auto" # speech language, not the UI language
 silence_seconds = 3 # 0 disables silence detection
-send_phrase = "これで終わります"
+send_phrase = "以上"
 replacements = "日記書いて => /daily" # one rule per line, for text you cannot dictate
 vertex_project_id = ""
 auto_start = true
@@ -181,7 +182,13 @@ enabled = true # Windows only; false by default elsewhere
 accelerator = "Ctrl+8"
 ```
 
+### Microphone
+
+In **Settings → Voice input**, choose **Microphone** for recorded and live transcription. If the device list is empty or names are missing, click **Check microphone**, allow access if prompted, and choose your device. The check opens the selected microphone briefly without sending audio to a transcription service. If a saved microphone is disconnected, reconnect it or choose **System default microphone**. Browser speech recognition uses the system's default input.
+
 ### Remembered service settings
+
+To use Gemini Live, select **Live transcription → Gemini API**, enter your Gemini API key, and save. Google lists a free tier for this model. [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-transcribe-live)
 
 Choose **Live transcription** to use `gpt-live-transcribe` with OpenAI, `gemini-3.5-transcribe-live` with the Gemini API, or `gemini-3.5-transcribe-live-preview` with Vertex AI. Interim text is shown in the editor; replacements, voice commands, and the copy-and-close phrase run only on final text. Live Base URLs and models are fixed. OpenAI and Gemini API use the API key saved in their service profile; Vertex AI reuses its saved project and Google OAuth connection. The Go backend owns the connection and credentials, so credentials are not placed in the WebSocket URL.
 
@@ -193,7 +200,7 @@ Settings remembers each service's **Base URL, API Key, Model, language, and Vert
 
 **Speech language** is a dropdown with service-specific codes and native language names alongside the UI language. OpenAI uses the documented Whisper language suggestions, whisper.cpp uses its language catalog, Gemini/Vertex use regional codes, and Azure MAI uses its model's language list. Browser and self-hosted support depends on the installed engine/model. Choose **Other (language code)** for unlisted languages; existing codes are preserved. Automatic detection remains available for HTTP services; the browser option uses the WebView language.
 
-**Voice commands** have four editable targets: **?**, **line break**, **!**, and **copy and close**. Settings remembers phrases per speech language and restores them when you switch languages or services. Defaults are provided only for Japanese (クエスチョン / クエスチョンマーク, エンター, びっくり, これで終わります) and English (question / question mark, enter, exclamation, I'm done speaking). Other languages start empty. Existing saved phrases are retained.
+**Voice commands** have four editable targets: **?**, **line break**, **!**, and **copy and close**. Settings remembers phrases per speech language and restores them when you switch languages or services. Defaults are provided only for Japanese (クエスチョン / クエスチョンマーク, エンター, びっくり, 以上) and English (question / question mark, enter, exclamation, over). Other languages start empty. The previous Japanese default (これで終わります) changes to 以上. Custom phrases and disabled commands are retained. To use 以上, pause briefly after the dictated text before saying it.
 
 **Replacements** rewrite recognized text once it is final. Each rule is a row of two fields in Settings - the spoken phrase, and what it becomes - with **+ Add a rule** and a **×** on each row. They exist for text dictation cannot produce: `/daily` is unsayable in Japanese, so a rule from `日記書いて` to `/daily` lets the sentence be spoken and the command be pasted. A replacement may also be a whole sentence, including line breaks. The longest phrase matches first, every occurrence is replaced, and the rest of the dictation follows the replacement, so "daily note today it rained" becomes "/daily today it rained". Punctuation the recognizer adds right after the phrase is consumed with it, so a phrase spoken as a sentence still yields `/infographic` rather than `/infographic。`, and one space separates the replacement from whatever follows. Latin phrases match whole words, case-insensitively; an empty replacement deletes the phrase. Rules are shared by all speech languages, are stored one per line in `config.toml` (line breaks inside a replacement are escaped), and are capped at 4000 characters in total.
 

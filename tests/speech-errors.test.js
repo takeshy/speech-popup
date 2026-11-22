@@ -91,6 +91,7 @@ test("speech error formatting handles foreign exceptions and preserves other err
   const foreignError = vm.runInNewContext('Object.assign(new Error("Invalid constraint"), { name: "OverconstrainedError" })');
   assert.equal(foreignError instanceof Error, false);
   assert.equal(speechErrorMessage(foreignError), details.en.OverconstrainedError);
+  assert.equal(speechErrorMessage(foreignError, "saved-mic"), "Cannot use the selected microphone. Reconnect it or choose another microphone in Settings.");
   assert.equal(speechErrorMessage(new Error("API request failed (503)")), "API request failed (503)");
   assert.equal(speechErrorMessage({ name: "UnknownError", message: "provider detail" }), "provider detail");
   assert.equal(speechErrorMessage({ name: "UnknownError", message: "" }), "UnknownError");

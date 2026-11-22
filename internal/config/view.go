@@ -47,6 +47,7 @@ type SpeechView struct {
 	SendPhraseProfiles map[string]string        `json:"sendPhraseProfiles,omitempty"`
 	Profiles           map[string]SpeechProfile `json:"profiles,omitempty"`
 	Provider           string                   `json:"provider"`
+	MicrophoneID       string                   `json:"microphoneId"`
 	EndpointType       string                   `json:"endpointType"`
 	BaseURL            string                   `json:"baseUrl"`
 	APIKey             string                   `json:"apiKey"`
@@ -68,6 +69,7 @@ func ToView(c *Config) View {
 	v.Window.RestoreFocus = c.Window.RestoreFocus
 	v.Speech.Profiles = cloneProfiles(c.Speech.Profiles)
 	v.Speech.Provider = c.Speech.Provider
+	v.Speech.MicrophoneID = c.Speech.MicrophoneID
 	v.Speech.EndpointType = c.Speech.EndpointType
 	v.Speech.BaseURL = c.Speech.BaseURL
 	v.Speech.APIKey = c.Speech.APIKey
@@ -156,6 +158,7 @@ func FromView(v View) (*Config, error) {
 
 func speechFromView(v SpeechView) (*SpeechConfig, error) {
 	s := Default().Speech
+	s.MicrophoneID = v.MicrophoneID
 	switch v.Provider {
 	case ProviderBrowser, ProviderHTTP, ProviderLive:
 		s.Provider = v.Provider

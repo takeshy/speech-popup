@@ -30,12 +30,17 @@ func TestFromViewAcceptsTheShippedDefaults(t *testing.T) {
 }
 
 func TestFromViewAcceptsARecordedConfiguration(t *testing.T) {
-	cfg, err := FromView(validView())
+	view := validView()
+	view.Speech.MicrophoneID = "usb-device-id"
+	cfg, err := FromView(view)
 	if err != nil {
 		t.Fatalf("FromView: %v", err)
 	}
 	if cfg.Speech.Provider != ProviderHTTP || cfg.Speech.Model != "whisper-1" {
 		t.Errorf("speech = %+v", cfg.Speech)
+	}
+	if got := ToView(cfg).Speech.MicrophoneID; got != view.Speech.MicrophoneID {
+		t.Errorf("microphone ID = %q, want %q", got, view.Speech.MicrophoneID)
 	}
 }
 

@@ -51,6 +51,8 @@ type SpeechConfig struct {
 	// Provider is "browser" (the WebView's own SpeechRecognition), "live"
 	// (provider WebSocket), or "openai-compatible" (record, then POST audio).
 	Provider string
+	// Empty uses the WebView's default microphone.
+	MicrophoneID string
 	// EndpointType selects the request shape used by "openai-compatible":
 	// openai / custom (POST /audio/transcriptions), whisper-cpp
 	// (POST /inference), gemini-transcribe and vertex-transcribe
@@ -353,6 +355,8 @@ func (c *Config) apply(section, key, value string) {
 		}
 	case "speech":
 		switch key {
+		case "microphone_id":
+			c.Speech.MicrophoneID = value
 		case "provider":
 			if value == ProviderBrowser || value == ProviderHTTP || value == ProviderLive {
 				c.Speech.Provider = value
@@ -424,6 +428,8 @@ func Marshal(c *Config) string {
 	b.WriteString("\n[speech]\n")
 	b.WriteString("# \"browser\" (WebView の音声認識) | \"openai-compatible\" (録音して STT へ POST)\n")
 	fmt.Fprintf(&b, "provider = %s\n", quote(c.Speech.Provider))
+	b.WriteString("# 空文字列なら既定のマイクを使用する\n")
+	fmt.Fprintf(&b, "microphone_id = %s\n", quote(c.Speech.MicrophoneID))
 	b.WriteString("# \"openai\" | \"whisper-cpp\" | \"custom\" | \"gemini-transcribe\" | \"vertex-transcribe\" | \"azure-mai-transcribe\"\n")
 	fmt.Fprintf(&b, "endpoint_type = %s\n", quote(c.Speech.EndpointType))
 	fmt.Fprintf(&b, "base_url = %s\n", quote(c.Speech.BaseURL))
