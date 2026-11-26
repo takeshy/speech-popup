@@ -1,13 +1,11 @@
-//go:build !windows
+//go:build !windows && !darwin
 
 package hotkey
 
-// Manager is a no-op placeholder outside Windows.
 type Manager struct{}
 
-// Start always fails outside Windows; callers should fall back to the
-// platform's own shortcut facilities.
-func Start(string, func()) (*Manager, error) { return nil, ErrUnsupported }
+func Start(Registry, string, func()) (*Manager, error) { return nil, ErrUnsupported }
 
-// Stop is a no-op outside Windows.
 func (*Manager) Stop() {}
+
+func (*Manager) Active() bool { return false }

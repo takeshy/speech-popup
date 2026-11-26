@@ -150,7 +150,7 @@ func (a *App) startHotkey(cfg config.HotkeyConfig) {
 	if !cfg.Enabled {
 		return
 	}
-	mgr, err := hotkey.Start(cfg.Accelerator, a.ShowPopup)
+	mgr, err := hotkey.Start(a.application.GlobalShortcut, cfg.Accelerator, a.ShowPopup)
 	if err != nil {
 		message := describeHotkeyError(cfg.Accelerator, err)
 		a.mu.Lock()
@@ -167,7 +167,7 @@ func (a *App) startHotkey(cfg config.HotkeyConfig) {
 // overwhelmingly common cause is another application holding the combination.
 func describeHotkeyError(accelerator string, err error) string {
 	if errors.Is(err, hotkey.ErrUnsupported) {
-		return i18n.T("アプリ内ホットキーは Windows 専用です。この OS ではコンポジタ/OS 側で `speech-popup show` に割り当ててください。")
+		return i18n.T("この OS ではシステム側で `speech-popup show` にキーを割り当ててください。")
 	}
 	if runtime.GOOS == "windows" && strings.Contains(err.Error(), "1409") {
 		return fmt.Sprintf(i18n.T("%s は他のアプリが既に登録しているため使えません。設定で別のキーにしてください。"), accelerator)
@@ -261,26 +261,34 @@ func (a *App) showPopupLocked() {
 	}
 	overlay := a.pendingOverlay
 	a.pendingOverlay = overlayNone
-	if a.visible {
-		a.mu.Unlock()
-		if a.window != nil {
-			a.window.Show().Focus()
-		}
-		if a.application != nil {
-			a.application.Event.Emit("popup:focus-input", overlay)
-		}
-		return
-	}
+	wasVisible := a.visible
 	a.visible = true
 	a.mu.Unlock()
 
-	// Capture who had focus before our window takes it (no-op on Linux,
-	// where the compositor tracks this for us).
-	if a.desktop != nil {
-		a.desktop.RememberFocus()
+	activate := func() {
+		if !wasVisible && a.desktop != nil {
+			a.desktop.RememberFocus()
+		}
+		if a.window != nil {
+			a.window.Show()
+			if wasVisible || runtime.GOOS == "darwin" {
+				a.window.Focus()
+			}
+		}
 	}
-	a.window.Show()
-	a.application.Event.Emit("popup:shown", overlay)
+	if runtime.GOOS == "darwin" && a.application != nil {
+		// Capture the previous app and focus the popup in the same AppKit turn.
+		application.InvokeSync(activate)
+	} else {
+		activate()
+	}
+	if a.application != nil {
+		if wasVisible {
+			a.application.Event.Emit("popup:focus-input", overlay)
+		} else {
+			a.application.Event.Emit("popup:shown", overlay)
+		}
+	}
 }
 
 // HidePopup hides the window (the daemon keeps running), flushing any staged

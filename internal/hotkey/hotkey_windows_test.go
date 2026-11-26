@@ -6,7 +6,7 @@ import "testing"
 
 func TestStopReleasesHotkeyBeforeReregistering(t *testing.T) {
 	const accelerator = "Ctrl+Alt+Shift+F24"
-	m, err := Start(accelerator, func() {})
+	m, err := Start(nil, accelerator, func() {})
 	if err != nil {
 		t.Skipf("test hotkey unavailable: %v", err)
 	}
@@ -19,7 +19,7 @@ func TestStopReleasesHotkeyBeforeReregistering(t *testing.T) {
 		default:
 			t.Fatal("Stop returned before the message loop exited")
 		}
-		next, err := Start(accelerator, func() {})
+		next, err := Start(nil, accelerator, func() {})
 		if err != nil {
 			t.Fatalf("re-register after Stop: %v", err)
 		}

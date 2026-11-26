@@ -131,7 +131,9 @@ The release app is **ad-hoc signed, without Developer ID signing or Apple notari
 
 The app stays in the menu bar with a microphone icon; no input window appears at startup. Choose **Open speech input** from that menu to check it. Launch the `.app` bundle, which declares microphone usage; the bare executable may not expose WebKit's recording APIs. For a source build, the bundle is `bin/speech-popup.app`.
 
-For an app installed in `~/Applications`, create a shortcut in Shortcuts.app with **Run Shell Script**, enter the following command, and assign **Ctrl+8** in its details. Start the app first so it is resident. Its popup is initially hidden; the menu-bar microphone icon also opens it.
+To open the popup directly with **Ctrl+8**, choose **Settings → Hotkey** from the menu-bar microphone icon, enable **Register a global hotkey**, and save. If Shortcuts already uses Ctrl+8, remove that assignment first. If registration fails, resolve the conflict or choose another key and save again. The global hotkey opens or focuses the popup. **Ctrl+Space** starts or stops recording inside it.
+
+In-app registration is off by default on macOS. To use Shortcuts instead, assign **Ctrl+8** to **Run Shell Script** with the following command (for an app installed in `~/Applications`).
 
 ```sh
 "$HOME/Applications/speech-popup.app/Contents/MacOS/speech-popup" show
@@ -178,7 +180,7 @@ auto_paste_delay_ms = 80
 paste_key = "ctrl+v" # use ctrl+shift+v for terminals
 
 [hotkey]
-enabled = true # Windows only; false by default elsewhere
+enabled = true # Windows default. Set to true on macOS to opt in.
 accelerator = "Ctrl+8"
 ```
 

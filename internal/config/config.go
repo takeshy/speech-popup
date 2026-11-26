@@ -29,10 +29,7 @@ type ClipboardConfig struct {
 	PasteKey         string // "ctrl+v" | "ctrl+shift+v"
 }
 
-// HotkeyConfig registers an in-app global hotkey. This exists for
-// Windows, which has no compositor bind equivalent; on Linux the binding
-// belongs to Hyprland and on macOS to OS-level shortcut facilities
-// (Shortcuts.app etc.), so the default is disabled there.
+// HotkeyConfig registers a native shortcut on Windows and optionally on macOS.
 type HotkeyConfig struct {
 	Enabled     bool
 	Accelerator string // "Ctrl+Shift+K" style
@@ -464,7 +461,7 @@ func Marshal(c *Config) string {
 	b.WriteString("# macOS: ctrl は Cmd。通常の貼り付けは ctrl+v (Cmd+V)\n")
 	fmt.Fprintf(&b, "paste_key = %s\n", quote(c.Clipboard.PasteKey))
 	b.WriteString("\n[hotkey]\n")
-	b.WriteString("# Windows のみ有効。アプリ内でグローバルホットキーを登録する\n")
+	b.WriteString("# Windows / macOS でアプリ内のグローバルホットキーを登録する\n")
 	fmt.Fprintf(&b, "enabled = %t\n", c.Hotkey.Enabled)
 	fmt.Fprintf(&b, "accelerator = %s\n", quote(c.Hotkey.Accelerator))
 	return b.String()

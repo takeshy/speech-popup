@@ -149,8 +149,8 @@ func FromView(v View) (*Config, error) {
 	if accelerator == "" {
 		return nil, errors.New(i18n.T("ホットキーを入力してください (例: Ctrl+8)"))
 	}
-	if _, _, err := hotkey.ParseAccelerator(accelerator); err != nil {
-		return nil, fmt.Errorf(i18n.T("ホットキー %q を解釈できません: A-Z, 0-9, F1-F24 と Ctrl/Shift/Alt/Win を + で繋いでください"), v.Hotkey.Accelerator)
+	if err := hotkey.ValidateAccelerator(accelerator); err != nil {
+		return nil, fmt.Errorf(i18n.T(hotkey.InvalidAcceleratorMessage), v.Hotkey.Accelerator)
 	}
 	c.Hotkey.Accelerator = accelerator
 	return c, nil

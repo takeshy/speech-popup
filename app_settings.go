@@ -43,11 +43,18 @@ const (
 
 // GetAppInfo returns version and path information for the menu.
 func (a *App) GetAppInfo() AppInfo {
+	a.actionMu.Lock()
+	defer a.actionMu.Unlock()
 	a.mu.Lock()
 	hotkeyErr := a.hotkeyErr
 	enabled := a.cfg.Hotkey.Enabled
 	key := a.cfg.Hotkey.Accelerator
 	a.mu.Unlock()
+	active := enabled && a.hotkeyMgr != nil && a.hotkeyMgr.Active()
+	if enabled && !active && hotkeyErr == "" {
+		// Wails may reject a shortcut after ServiceStartup, when it binds pending keys.
+		hotkeyErr = i18n.T("ホットキーが登録されていません。他の割り当てを確認して設定を保存してください。")
+	}
 	return AppInfo{
 		Version:       appVersion(),
 		OS:            runtime.GOOS,
@@ -56,7 +63,7 @@ func (a *App) GetAppInfo() AppInfo {
 		LogPath:       logPath(),
 		HotkeyEnabled: enabled,
 		HotkeyKey:     key,
-		HotkeyActive:  enabled && hotkeyErr == "",
+		HotkeyActive:  active,
 		HotkeyError:   hotkeyErr,
 	}
 }
@@ -71,7 +78,7 @@ func (a *App) LoadConfig() config.View {
 }
 
 // SaveConfig validates, writes config.toml, and applies what can change at
-// runtime: window size, speech settings, clipboard behaviour, and (on Windows)
+// runtime: window size, speech settings, clipboard behaviour, and (on Windows and macOS)
 // the hotkey. Every setting takes effect without a restart.
 func (a *App) SaveConfig(view config.View) (SaveConfigResult, error) {
 	restoreVertexProject(&view)
@@ -100,7 +107,7 @@ func (a *App) SaveConfig(view config.View) (SaveConfigResult, error) {
 	if prev.Clipboard.Backend != next.Clipboard.Backend && a.application != nil {
 		a.copier = clipboard.New(next.Clipboard.Backend, a.application.Clipboard.SetText)
 	}
-	if prev.Hotkey != next.Hotkey {
+	if prev.Hotkey != next.Hotkey || next.Hotkey.Enabled && (a.hotkeyMgr == nil || !a.hotkeyMgr.Active()) {
 		a.startHotkey(next.Hotkey)
 		a.mu.Lock()
 		result.Warning = a.hotkeyErr

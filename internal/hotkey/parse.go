@@ -7,6 +7,13 @@ import (
 	"strings"
 )
 
+// Registry is the part of Wails' global shortcut manager used on macOS.
+type Registry interface {
+	Register(string, func()) error
+	Unregister(string) error
+	IsRegistered(string) bool
+}
+
 // Win32 modifier flags shared with hotkey_windows.go.
 const (
 	modAlt     = 0x0001

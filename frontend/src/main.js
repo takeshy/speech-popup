@@ -986,7 +986,7 @@ import { endpointPreset, isGoogleEndpoint, validateSpeechSettings } from "./spee
       return;
     }
     if (os === "darwin") {
-      hotkeyNoteEl.textContent = t("macOS では OS 側のショートカット機能から `speech-popup show` を呼び出してください (Shortcuts.app など)。");
+      hotkeyNoteEl.textContent = t("Ctrl / Shift / Option / Cmd と A-Z、0-9、Space、F1-F20 を組み合わせてください。同じキーをショートカット.app に割り当てている場合は、先にそちらの割り当てを解除してください。");
       hotkeyBindRow.hidden = true;
       return;
     }

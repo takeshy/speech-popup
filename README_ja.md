@@ -89,7 +89,7 @@ speech-popup version    バージョン表示
 
 - Linux/Hyprland: アプリは登録しません。`bind = CTRL, 8, exec, speech-popup show` を `hyprland.conf` に書きます (下記)
 - Windows: アプリが `RegisterHotKey` で自動登録します
-- macOS: OS 側のショートカット機能から `speech-popup show` を呼びます
+- macOS: 設定でアプリ内登録を有効にするか、外部ランチャーから `speech-popup show` を呼びます
 
 ### 窓の中のキー操作
 
@@ -167,13 +167,13 @@ Release 版は **Apple Silicon (arm64)・macOS 12 以降**が対象です。Inte
 
 起動するとメニューバーにマイクアイコンが表示され、入力窓はまだ開きません。そのメニューの「音声入力を開く」で動作を確認できます。マイクの用途を宣言した `.app` を起動してください。実行ファイル単体では WebView の録音 API が利用できない場合があります。自前ビルドの場合は `bin/speech-popup.app` が生成されます。
 
-呼び出しキーは OS 側で設定します。[Shortcuts.app](https://support.apple.com/guide/shortcuts-mac/intro-to-shortcuts-apdfebc4f80a/mac) で「シェルスクリプトを実行」に次を指定し、詳細で **Ctrl+8** を割り当ててください。これは `speech-popup.app` を `~/Applications` に配置した例です。skhd / Raycast / Hammerspoon から同じコマンドを呼ぶこともできます。
+**Ctrl+8** で音声入力窓を直接開くには、メニューバーのマイクアイコンから **設定 → ショートカット** を開き、「アプリ内でグローバルホットキーを登録する」にチェックを入れて保存します。ショートカット.app で同じキーを使っている場合は、先にそちらの割り当てを解除してください。登録に失敗した場合は、競合を解消するか別のキーを選んで再度保存します。呼び出しキーをもう一度押すと入力欄にフォーカスが戻ります。窓の中で録音を開始・停止するキーは **Ctrl+Space** です。
+
+macOS のアプリ内登録は既定で無効です。外部ランチャーを使う場合は、[Shortcuts.app](https://support.apple.com/guide/shortcuts-mac/intro-to-shortcuts-apdfebc4f80a/mac) で「シェルスクリプトを実行」に次を指定し、詳細で **Ctrl+8** を割り当ててください。これは `speech-popup.app` を `~/Applications` に配置した例です。skhd / Raycast / Hammerspoon から同じコマンドを呼ぶこともできます。
 
 ```sh
 "$HOME/Applications/speech-popup.app/Contents/MacOS/speech-popup" show
 ```
-
-先にアプリを起動して常駐させてください。起動直後は入力窓を表示せず、メニューバーのマイクアイコンからも開けます。
 
 初回は**マイク**、ブラウザ認識では必要に応じて**音声認識**の使用を許可してください。ブラウザ認識も、マイクの許可取得を待ってから開始します。許可を拒否した場合は「システム設定 → プライバシーとセキュリティ」で確認してください。自動貼り付けには `osascript` が使う **Accessibility / Automation** 権限も必要です。フォーカス復帰はAppKitを使い、Automation権限は不要です。設定の `paste_key` の `ctrl` は **Cmd** として扱われます。Macでの自動貼り付けの初期値は **Cmd+V** (`paste_key = "ctrl+v"`) です。既存の設定では「設定 → クリップボード / 貼り付け → 貼り付けキー」で **Cmd+V** を選んで保存してください。入力欄でのコピー・切り取り・貼り付けも **Cmd+C / Cmd+X / Cmd+V** です。
 
@@ -230,11 +230,12 @@ auto_paste_delay_ms = 80
 paste_key = "ctrl+shift+v"
 
 [hotkey]
-# Windows のみ有効。アプリ内でグローバルホットキーを登録する (RegisterHotKey)。
-# 既定は Windows のみ true (Linux は Hyprland bind、macOS は OS のショートカット
-# 機能に委譲するため、他 OS では設定しても無視される)
+# Windows は既定で有効。macOS は true でアプリ内登録を有効にする。
+# Linux はコンポジタ側で登録する。
 enabled = true
-accelerator = "Ctrl+8"   # A-Z, 0-9, F1-F24 + Ctrl/Shift/Alt/Win   # A-Z, 0-9, F1-F24 + Ctrl/Shift/Alt/Win
+# macOS: Ctrl/Shift/Option/Cmd + A-Z, 0-9, Space, F1-F20
+# Windows: Ctrl/Shift/Alt/Win + A-Z, 0-9, F1-F24
+accelerator = "Ctrl+8"
 ```
 
 ### マイク
