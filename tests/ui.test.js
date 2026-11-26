@@ -329,14 +329,14 @@ test("saying 以上 in OpenAI Live confirms, copies and closes without pressing 
   ui.events["popup:shown"]("");
   await until(() => ui.element("mode").dataset.recording === "true");
   const sessionId = ui.liveSession();
-  ui.events["speech:live"]({ sessionId, kind: "delta", itemId: "a", text: "入力した文章。以上。" });
+  ui.events["speech:live"]({ sessionId, kind: "delta", itemId: "a", text: "入力した文章以上" });
   ui.liveSilence();
   await until(() => ui.liveFinishes.length === 1);
   assert.equal(ui.hides(), 0, "a tentative command must await final confirmation");
-  ui.events["speech:live"]({ sessionId, kind: "final", itemId: "a", text: "入力した文章。以上。" });
+  ui.events["speech:live"]({ sessionId, kind: "final", itemId: "a", text: "入力した文章以上。" });
   await until(() => ui.hides() === 1);
   assert.equal(ui.element("input").value, "");
-  assert.equal(ui.history()[0], "入力した文章。");
+  assert.equal(ui.history()[0], "入力した文章");
   ui.events["popup:shown"]("");
   await until(() => ui.liveSessions.length === 2 && ui.element("mode").dataset.recording === "true");
 });

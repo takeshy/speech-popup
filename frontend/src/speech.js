@@ -85,8 +85,6 @@ export function speechDraft(base, transcript, final, sendPhrase = "over, オー�
     .filter(Boolean).sort((a, b) => b.length - a.length);
   const pattern = phrases.map((phrase) => {
     const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // Require separation from the preceding text for the short command 以上.
-    if (phrase === "以上") return "(?<![^\\s。．.、,，!！?？…])" + escaped;
     // Word-based scripts need a Unicode boundary (e.g. terminé must not
     // match the end of indéterminé). Scripts commonly written without spaces
     // still allow a command immediately after the dictated text.
